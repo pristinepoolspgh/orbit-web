@@ -1,6 +1,6 @@
-# Orbit for phones
+# Orbi for phones
 
-The phone version of Orbit, Jonathan's voice assistant. It talks to the same brain
+The phone version of Orbi, Jonathan's voice assistant. It talks to the same brain
 (the `orbit-brain` function on Pristine Tracker) as the round device.
 
 - Open https://pristinepoolspgh.github.io/orbit-web on your phone.
