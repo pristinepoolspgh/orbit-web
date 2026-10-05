@@ -1,0 +1,687 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Orbit</title>
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Orbit">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<style>
+/* Orbit on a phone: the same black AMOLED face as the device, captions
+   below it in a face built for reading outdoors, one big talk button. */
+:root{
+  --bg:#000; --panel:#0f1115; --line:#23272f; --text:#eceef2; --dim:#969ca8; --faint:#30343c;
+  --accent:#ff9a4d; --accent-ink:#1a0f05; --err:#ff6b6b; --ok:#4cc38a;
+  --font:"Atkinson Hyperlegible",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font:17px/1.4 var(--font)}
+body{padding:env(safe-area-inset-top,0px) 16px env(safe-area-inset-bottom,0px);overflow:hidden}
+button{font:inherit;color:inherit}
+.app{height:100%;max-width:520px;margin:0 auto;display:flex;flex-direction:column}
+header{display:flex;align-items:center;gap:10px;padding-block:12px 4px}
+.mark{display:flex;align-items:center;gap:8px;font-weight:700;font-size:20px;letter-spacing:.01em}
+.mark i{width:12px;height:12px;border-radius:50%;background:var(--accent);display:block}
+.pill{font-size:13px;font-weight:700;letter-spacing:.06em;color:var(--accent);border:1.5px solid var(--accent);background:rgba(255,154,77,.14);border-radius:99px;padding:3px 10px}
+.spacer{flex:1}
+.icon{width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--panel);display:grid;place-items:center;cursor:pointer}
+.icon:focus-visible,.talk:focus-visible,.row button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.icon svg{width:22px;height:22px;stroke:var(--dim);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.stage{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;gap:14px;padding-block:6px}
+.face{width:min(78vw,40vh,360px);aspect-ratio:1;max-width:100%;border-radius:50%;flex:none;cursor:pointer}
+.words{width:100%;flex:1;min-height:0;overflow-y:auto;text-align:center;display:flex;flex-direction:column;gap:8px;padding-inline:4px}
+.heard{color:var(--dim);font-size:16px;min-height:0}
+.caption{font-size:24px;line-height:1.32;text-wrap:pretty}
+.status{color:var(--accent);font-weight:700;font-size:15px;letter-spacing:.02em}
+.notice{color:var(--dim);font-size:19px}
+.dock{display:flex;align-items:center;justify-content:center;gap:18px;padding-block:10px 14px}
+.talk{width:96px;height:96px;border-radius:50%;border:0;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:14px;
+  display:grid;place-items:center;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;cursor:pointer;
+  box-shadow:0 0 0 0 rgba(255,154,77,.5);transition:transform .12s ease,box-shadow .2s ease}
+.talk svg{width:34px;height:34px;fill:var(--accent-ink)}
+.talk.live{transform:scale(1.08);box-shadow:0 0 0 14px rgba(255,154,77,.18)}
+.talk.busy{background:var(--panel);border:2px solid var(--accent)}
+.talk.busy svg{fill:var(--accent)}
+.hint{font-size:13px;color:var(--dim);text-align:center;min-height:18px}
+.typebar{display:flex;gap:8px;padding-block:0 10px}
+.typebar input{flex:1;min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:12px;color:var(--text);font:inherit;padding:12px 14px}
+.typebar input:focus{outline:2px solid var(--accent);border-color:transparent}
+.typebar button{background:var(--accent);color:var(--accent-ink);border:0;border-radius:12px;padding:0 16px;font-weight:700;cursor:pointer}
+/* Setup + settings sheets */
+.sheet{position:fixed;inset:0;background:rgba(0,0,0,.72);display:flex;align-items:flex-end;justify-content:center;z-index:5}
+.card{width:100%;max-width:520px;background:var(--panel);border:1px solid var(--line);border-bottom:0;border-radius:20px 20px 0 0;
+  padding:20px 16px calc(20px + env(safe-area-inset-bottom,0px));max-height:90%;overflow-y:auto}
+.card h2{margin:0 0 4px;font-size:22px;text-wrap:balance}
+.card p{margin:0 0 14px;color:var(--dim);font-size:15px}
+.card label{display:block;font-size:14px;color:var(--dim);margin:14px 0 6px}
+.card input[type=text]{width:100%;background:#07080b;border:1px solid var(--line);border-radius:12px;color:var(--text);font:700 22px/1 var(--font);
+  letter-spacing:.14em;text-transform:uppercase;padding:14px;text-align:center}
+.card input[type=text]:focus{outline:2px solid var(--accent);border-color:transparent}
+.primary{width:100%;margin-top:14px;background:var(--accent);color:var(--accent-ink);border:0;border-radius:12px;padding:15px;font-weight:700;cursor:pointer}
+.primary:disabled{opacity:.5}
+.err{color:var(--err);font-size:14px;min-height:20px;margin-top:8px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 0;border-top:1px solid var(--line)}
+.row:first-of-type{border-top:0}
+.row span{display:flex;flex-direction:column}
+.row small{color:var(--dim);font-size:13px}
+.seg{display:flex;background:#07080b;border:1px solid var(--line);border-radius:10px;padding:3px;gap:2px}
+.seg button{border:0;background:none;color:var(--dim);border-radius:8px;padding:7px 10px;font-size:14px;cursor:pointer}
+.seg button[aria-pressed=true]{background:var(--accent);color:var(--accent-ink);font-weight:700}
+.switch{width:52px;height:30px;border-radius:99px;border:1px solid var(--line);background:#07080b;position:relative;cursor:pointer;flex:none}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:var(--dim);transition:left .15s ease}
+.switch[aria-checked=true]{background:var(--accent);border-color:var(--accent)}
+.switch[aria-checked=true]::after{left:25px;background:var(--accent-ink)}
+input[type=range]{width:140px;accent-color:var(--accent)}
+.ghost{background:none;border:1px solid var(--line);border-radius:10px;padding:9px 12px;cursor:pointer;font-size:14px}
+.danger{color:var(--err);border-color:#4a2626}
+.toast{position:fixed;left:16px;right:16px;bottom:calc(130px + env(safe-area-inset-bottom,0px));max-width:488px;margin:0 auto;background:#1b1f27;border:1px solid var(--line);
+  border-radius:12px;padding:12px 14px;font-size:15px;z-index:6;text-align:center}
+@media (prefers-reduced-motion:reduce){.talk{transition:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="mark"><i></i>Orbit</div>
+    <span class="pill" id="pill" hidden>ES / EN</span>
+    <div class="spacer"></div>
+    <button class="icon" id="typeBtn" aria-label="Type a question"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/></svg></button>
+    <button class="icon" id="gearBtn" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+  </header>
+
+  <main class="stage">
+    <canvas class="face" id="face" aria-label="Orbit's face. Tap to stop it talking."></canvas>
+    <div class="words" aria-live="polite">
+      <div class="heard" id="heard"></div>
+      <div class="caption" id="caption"></div>
+      <div class="notice" id="notice"></div>
+      <div class="status" id="status"></div>
+    </div>
+  </main>
+
+  <form class="typebar" id="typebar" hidden>
+    <input id="typed" type="search" enterkeyhint="send" autocomplete="off" placeholder="Ask Orbit something">
+    <button type="submit">Send</button>
+  </form>
+
+  <div class="dock">
+    <button class="talk" id="talk" aria-label="Hold to talk">
+      <svg viewBox="0 0 24 24"><path d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-6a3.5 3.5 0 0 0-7 0v6A3.5 3.5 0 0 0 12 15zm6.5-3.5a.9.9 0 1 0-1.8 0 4.7 4.7 0 0 1-9.4 0 .9.9 0 1 0-1.8 0 6.5 6.5 0 0 0 5.6 6.4V20H8.6a.9.9 0 1 0 0 1.8h6.8a.9.9 0 1 0 0-1.8h-2.5v-2.1a6.5 6.5 0 0 0 5.6-6.4z"/></svg>
+    </button>
+  </div>
+  <div class="hint" id="hint">Hold to talk, or tap once and just talk</div>
+</div>
+
+<!-- Pair this phone -->
+<div class="sheet" id="setup" hidden>
+  <form class="card" id="setupForm">
+    <h2>Connect Orbit to its brain</h2>
+    <p>Enter the one-time setup code. This phone becomes its own Orbit, with the same calendar, tracker, memory, voice and translator as the device.</p>
+    <label for="code">Setup code</label>
+    <input id="code" type="text" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" maxlength="14" placeholder="ABCD2345">
+    <button class="primary" id="connect" type="submit">Connect</button>
+    <div class="err" id="setupErr"></div>
+  </form>
+</div>
+
+<!-- Settings -->
+<div class="sheet" id="settings" hidden>
+  <div class="card" role="dialog" aria-labelledby="setTitle">
+    <h2 id="setTitle">Settings</h2>
+    <div class="row"><span>Translator<small>Spanish in, English out, and back</small></span><button class="switch" id="sTranslate" role="switch" aria-checked="false" aria-label="Translator"></button></div>
+    <div class="row"><span>Speak answers<small>Off: captions only</small></span><button class="switch" id="sSpeak" role="switch" aria-checked="true" aria-label="Speak answers"></button></div>
+    <div class="row"><span>Volume</span><input type="range" id="sVolume" min="0" max="100" aria-label="Volume"></div>
+    <div class="row"><span>Brain</span><div class="seg" id="sModel"></div></div>
+    <div class="row"><span>New conversation<small>Forget the last few questions</small></span><button class="ghost" id="sNew">Start fresh</button></div>
+    <div class="row"><span>This phone<small id="sDevice">Connected</small></span><button class="ghost danger" id="sForget">Disconnect</button></div>
+    <button class="primary" id="sDone">Done</button>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script>
+"use strict";
+// ---------------------------------------------------------------------------
+// Orbit for phones. Talks to the same brain as the device (orbit-brain on
+// Pristine Tracker): records 16 kHz speech, posts it to /turn, reads the
+// NDJSON events, then plays the 16 kHz speech that follows as it streams.
+// ---------------------------------------------------------------------------
+const BRAIN = "https://axpkzvhthtslymnokdiz.supabase.co/functions/v1/orbit-brain";
+const MODELS = [
+  { id: "claude-sonnet-5-5", name: "Balanced" },
+  { id: "claude-haiku-4-5-20251001", name: "Fastest" },
+  { id: "claude-fable-5-1", name: "Smartest" },
+];
+const MIN_RECORD_MS = 450, TAP_HOLD_MS = 400, MAX_RECORD_MS = 20000;
+const SILENCE_STOP_MS = 1300, NO_SPEECH_STOP_MS = 7000;
+
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("orbit." + k); return v === null ? d : JSON.parse(v); } catch (_) { return d; } },
+  set(k, v) { try { localStorage.setItem("orbit." + k, JSON.stringify(v)); } catch (_) {} },
+  del(k) { try { localStorage.removeItem("orbit." + k); } catch (_) {} },
+};
+let token = store.get("token", "");
+const prefs = {
+  model: Math.min(Math.max(store.get("model", 0), 0), MODELS.length - 1),
+  speak: store.get("speak", true),
+  volume: store.get("volume", 0.9),
+};
+let translating = false;
+
+// ---- UI state -------------------------------------------------------------------
+let mode = "idle";   // idle | listen | think | speak | notice
+let modeSince = 0;
+const ui = { heard: "", caption: "", status: "", notice: "", noticeGood: false };
+function setMode(m) { mode = m; modeSince = performance.now(); render(); }
+function render() {
+  $("heard").textContent = (mode === "think" || mode === "speak") ? ui.heard : "";
+  $("caption").textContent = mode === "speak" ? ui.caption : "";
+  $("notice").textContent = mode === "notice" ? ui.notice : "";
+  $("status").textContent = mode === "listen" ? (ui.status || (rec && rec.tap ? "Listening. I'll stop when you pause." : "Listening"))
+    : mode === "think" ? (ui.status || "Thinking") : "";
+  $("pill").hidden = !translating;
+  const t = $("talk");
+  t.classList.toggle("live", mode === "listen");
+  t.classList.toggle("busy", mode === "think" || mode === "speak");
+  t.setAttribute("aria-label", mode === "think" || mode === "speak" ? "Interrupt and ask something else" : "Hold to talk");
+  $("hint").textContent = mode === "listen" ? (rec && rec.tap ? "Tap to send" : "Let go to send")
+    : (mode === "think" || mode === "speak") ? "Tap the face to stop · hold the button to interrupt"
+    : translating ? "Translator on · say “stop translating” to end" : "Hold to talk, or tap once and just talk";
+}
+let toastTimer = 0;
+function toast(msg, ms = 3500) {
+  const t = $("toast"); t.textContent = msg; t.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), ms);
+}
+function showNotice(text, good = false) { ui.notice = text; ui.noticeGood = good; setMode("notice"); }
+
+// ---- Audio graph ------------------------------------------------------------------
+let ac = null, outGain = null, outAnalyser = null;
+function audioNow() {
+  // Created inside a tap: phones only allow sound that a gesture started.
+  if (!ac) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    ac = new AC();
+    outGain = ac.createGain();
+    outGain.gain.value = prefs.volume;
+    outAnalyser = ac.createAnalyser();
+    outAnalyser.fftSize = 512;
+    outGain.connect(outAnalyser);
+    outAnalyser.connect(ac.destination);
+  }
+  if (ac.state !== "running") ac.resume().catch(() => {});
+  return ac;
+}
+function levelOf(analyser) {
+  if (!analyser) return 0;
+  const d = new Float32Array(analyser.fftSize);
+  analyser.getFloatTimeDomainData(d);
+  let s = 0; for (let i = 0; i < d.length; i++) s += d[i] * d[i];
+  return Math.min(1, Math.sqrt(s / d.length) * 6);
+}
+
+// ---- Microphone --------------------------------------------------------------------
+let mic = null;   // { stream, src, proc, sink }
+let rec = null;   // the recording in progress
+let micLevel = 0;
+async function openMic() {
+  if (mic) return mic;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error("nomic");
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+  });
+  const ctx = audioNow();
+  const src = ctx.createMediaStreamSource(stream);
+  const proc = ctx.createScriptProcessor(2048, 1, 1);
+  const sink = ctx.createGain(); sink.gain.value = 0;   // keeps the processor running, silently
+  src.connect(proc); proc.connect(sink); sink.connect(ctx.destination);
+  proc.onaudioprocess = (e) => onMicBlock(e.inputBuffer.getChannelData(0));
+  mic = { stream, src, proc, sink };
+  return mic;
+}
+function closeMic() {
+  if (!mic) return;
+  try { mic.proc.disconnect(); mic.src.disconnect(); mic.sink.disconnect(); } catch (_) {}
+  mic.stream.getTracks().forEach((t) => t.stop());
+  mic = null;
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) { if (rec) cancelRecording(); stopTurn(true); closeMic(); }
+});
+
+function onMicBlock(data) {
+  if (!rec) return;
+  const copy = new Float32Array(data);
+  rec.chunks.push(copy);
+  rec.samples += copy.length;
+  let s = 0; for (let i = 0; i < copy.length; i++) s += copy[i] * copy[i];
+  const rms = Math.sqrt(s / copy.length);
+  micLevel = Math.min(1, rms * 9);
+  // Voice detection for tap mode: a slowly rising noise floor, speech well above it.
+  const blockMs = (copy.length / ac.sampleRate) * 1000;
+  rec.floor = rec.floor === null ? rms : Math.min(rec.floor * 1.02 + 1e-5, Math.max(rms, rec.floor * 0.9));
+  const loud = rms > Math.max(0.012, rec.floor * 3);
+  if (loud) { rec.speech += blockMs; rec.quiet = 0; } else rec.quiet += blockMs;
+  if (rec.speech > 150) rec.heardSpeech = true;
+  const elapsed = (rec.samples / ac.sampleRate) * 1000;
+  if (elapsed >= MAX_RECORD_MS) return finishRecording();
+  if (rec.tap) {
+    if (rec.heardSpeech && rec.quiet >= SILENCE_STOP_MS) finishRecording();
+    else if (!rec.heardSpeech && elapsed >= NO_SPEECH_STOP_MS) {
+      const follow = rec.followUp;
+      cancelRecording();
+      if (follow) setMode("idle"); else showNotice("I didn't hear anything. Hold the button and talk.");
+    }
+  }
+}
+
+async function startListening({ hold, followUp = false }) {
+  stopTurn(false);
+  audioNow();
+  ui.heard = ui.caption = ui.notice = ""; ui.status = followUp ? "Go ahead" : "";
+  try { await openMic(); }
+  catch (e) {
+    showNotice(e && e.name === "NotAllowedError"
+      ? "Orbit needs the microphone. Allow it for this site in your browser settings, or tap the keyboard to type."
+      : "This browser can't use the microphone here. Tap the keyboard button to type instead.");
+    return;
+  }
+  rec = { chunks: [], samples: 0, tap: !hold, followUp, floor: null, speech: 0, quiet: 0, heardSpeech: false, started: performance.now() };
+  setMode("listen");
+}
+function cancelRecording() { rec = null; micLevel = 0; }
+async function finishRecording() {
+  if (!rec) return;
+  const r = rec; rec = null; micLevel = 0;
+  const ms = (r.samples / ac.sampleRate) * 1000;
+  if (ms < MIN_RECORD_MS || (r.tap && !r.heardSpeech)) { setMode("idle"); return; }
+  ui.status = ""; setMode("think");
+  const pcm = await to16kPcm(r.chunks, ac.sampleRate);
+  runTurn(pcm, false, r.followUp);
+}
+
+// Resample to 16 kHz mono 16-bit (what the brain's speech recognition takes).
+async function to16kPcm(chunks, rate) {
+  let len = 0; for (const c of chunks) len += c.length;
+  const all = new Float32Array(len);
+  let o = 0; for (const c of chunks) { all.set(c, o); o += c.length; }
+  let mono = all;
+  if (rate !== 16000) {
+    const outLen = Math.max(1, Math.round(len * 16000 / rate));
+    try {
+      const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+      const off = new OAC(1, outLen, 16000);
+      const b = off.createBuffer(1, len, rate);
+      b.getChannelData(0).set(all);
+      const s = off.createBufferSource(); s.buffer = b; s.connect(off.destination); s.start();
+      mono = (await off.startRendering()).getChannelData(0);
+    } catch (_) {
+      // Fallback: average each output sample's span (a simple low-pass + decimate).
+      mono = new Float32Array(outLen);
+      const step = len / outLen;
+      for (let i = 0; i < outLen; i++) {
+        const a = Math.floor(i * step), b2 = Math.min(len, Math.floor((i + 1) * step)) || a + 1;
+        let s = 0; for (let j = a; j < b2; j++) s += all[j];
+        mono[i] = s / Math.max(1, b2 - a);
+      }
+    }
+  }
+  const out = new Int16Array(mono.length);
+  for (let i = 0; i < mono.length; i++) { const v = Math.max(-1, Math.min(1, mono[i])); out[i] = v < 0 ? v * 32768 : v * 32767; }
+  return new Uint8Array(out.buffer);
+}
+
+// ---- Speech playback (16 kHz PCM, streamed) ---------------------------------------------
+class Player {
+  constructor(ctx) { this.ctx = ctx; this.next = 0; this.sources = []; this.carry = null; this.started = false; this.stopped = false; }
+  push(bytes) {
+    if (this.stopped || !bytes.length) return;
+    if (this.carry) { const m = new Uint8Array(this.carry.length + bytes.length); m.set(this.carry); m.set(bytes, this.carry.length); bytes = m; this.carry = null; }
+    const even = bytes.length - (bytes.length % 2);
+    if (even < bytes.length) this.carry = bytes.slice(even);
+    if (!even) return;
+    const view = new DataView(bytes.buffer, bytes.byteOffset, even);
+    const n = even / 2;
+    // Upsample to the context rate (some phones refuse 16 kHz buffers).
+    const rate = this.ctx.sampleRate, ratio = rate / 16000, outN = Math.floor(n * ratio);
+    const buf = this.ctx.createBuffer(1, outN, rate);
+    const ch = buf.getChannelData(0);
+    for (let i = 0; i < outN; i++) {
+      const x = i / ratio, a = Math.floor(x), f = x - a;
+      const s0 = view.getInt16(Math.min(a, n - 1) * 2, true), s1 = view.getInt16(Math.min(a + 1, n - 1) * 2, true);
+      ch[i] = (s0 + (s1 - s0) * f) / 32768;
+    }
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf; src.connect(outGain);
+    const now = this.ctx.currentTime;
+    if (!this.started || this.next < now) this.next = now + (this.started ? 0.05 : 0.25);   // a little preroll smooths the network
+    this.started = true;
+    src.start(this.next);
+    this.next += buf.duration;
+    this.sources.push(src);
+    src.onended = () => { this.sources = this.sources.filter((s) => s !== src); };
+  }
+  playing() { return !this.stopped && this.started && (this.sources.length > 0 || this.ctx.currentTime < this.next); }
+  stop() { this.stopped = true; for (const s of this.sources) { try { s.stop(); } catch (_) {} } this.sources = []; }
+}
+
+// ---- A turn with the brain ------------------------------------------------------------
+let turn = null;   // { abort, player, done, gotAudio, replyQuestion, followUp, speakStart }
+function stopTurn(toIdle) {
+  if (turn) { turn.cancelled = true; try { turn.abort.abort(); } catch (_) {} if (turn.player) turn.player.stop(); turn = null; }
+  if (toIdle) setMode("idle");
+}
+
+async function runTurn(body, isText, followUp) {
+  const t = { abort: new AbortController(), player: null, done: false, gotAudio: false, replyQuestion: false, followUp, cancelled: false, speakStart: 0 };
+  turn = t;
+  ui.heard = isText ? body : ""; ui.caption = ""; ui.notice = ""; ui.status = "";
+  setMode("think");
+  const headers = {
+    "X-Orbit-Token": token,
+    "X-Orbit-Model": MODELS[prefs.model].id,
+    "X-Orbit-Speaker": prefs.speak ? "on" : "off",
+    "Content-Type": isText ? "application/json" : "application/octet-stream",
+  };
+  if (translating) headers["X-Orbit-Mode"] = "translate";
+  let res;
+  try {
+    res = await fetch(BRAIN + "/turn", { method: "POST", headers, body: isText ? JSON.stringify({ text: body }) : body, signal: t.abort.signal });
+  } catch (e) {
+    if (t.cancelled) return;
+    turn = null; return showNotice(navigator.onLine === false ? "You're offline. Check your connection." : "I couldn't reach my brain. Try again in a moment.");
+  }
+  if (t.cancelled) return;
+  if (res.status === 401) { turn = null; return unpaired(); }
+  if (!res.ok || !res.body) { turn = null; return showNotice("My brain had a problem. Try again in a moment."); }
+
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let pending = new Uint8Array(0), audio = false, notice = "";
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (t.cancelled) return;
+      if (done) break;
+      if (!value || !value.length) continue;
+      if (audio) { t.player.push(value); continue; }
+      const m = new Uint8Array(pending.length + value.length); m.set(pending); m.set(value, pending.length); pending = m;
+      let nl;
+      while (!audio && (nl = pending.indexOf(10)) >= 0) {
+        const line = dec.decode(pending.subarray(0, nl)); pending = pending.slice(nl + 1);
+        let ev; try { ev = JSON.parse(line); } catch (_) { continue; }
+        if (ev.t === "heard") { ui.heard = ev.text || ""; render(); }
+        else if (ev.t === "status") { ui.status = ev.text || ""; render(); }
+        else if (ev.t === "reply") { ui.caption = ev.text || ""; t.replyQuestion = /\?\s*$/.test(ui.caption); }
+        else if (ev.t === "error") { notice = ev.text || "Something went wrong."; }
+        else if (ev.t === "mode") { setTranslating(!!ev.translate); }
+        else if (ev.t === "audio") {
+          audio = true;
+          t.player = new Player(audioNow());
+          t.gotAudio = true; t.speakStart = performance.now();
+          setMode("speak");
+          if (pending.length) t.player.push(pending);
+          pending = new Uint8Array(0);
+        }
+      }
+    }
+  } catch (e) {
+    if (t.cancelled) return;
+    if (!ui.caption) { turn = null; return showNotice("I lost the connection to my brain."); }
+  }
+  if (t.cancelled) return;
+  t.done = true;
+  if (t.player) { if (t.player.carry) t.player.carry = null; return; }   // the speak loop finishes it
+  if (ui.caption) { t.speakStart = performance.now(); setMode("speak"); return; }   // captions only
+  turn = null;
+  if (notice) return showNotice(notice);
+  if (!ui.heard) return followUp ? setMode("idle") : showNotice("Sorry, I didn't catch that.");
+  setMode("idle");
+}
+
+// Called every frame while speaking: ends the turn when speech (or reading time) is over.
+function tickSpeaking(now) {
+  const t = turn;
+  if (!t || mode !== "speak" || !t.done) return;
+  const audioDone = !t.player || !t.player.playing();
+  const readS = Math.max(2.5, ui.caption.length / 15);
+  const readDone = t.gotAudio || (now - t.speakStart) / 1000 > readS;
+  if (!(audioDone && readDone)) { t.doneAt = 0; return; }
+  if (!t.doneAt) t.doneAt = now;
+  if (now - t.doneAt < (t.replyQuestion ? 250 : 2200)) return;
+  turn = null;
+  if (t.replyQuestion && prefs.speak && !translating && t.gotAudio) startListening({ hold: false, followUp: true });
+  else setMode("idle");
+}
+
+function setTranslating(on) {
+  translating = on;
+  $("sTranslate").setAttribute("aria-checked", String(on));
+  render();
+}
+
+function unpaired() {
+  token = ""; store.del("token");
+  showSetup("This phone isn't connected to the brain anymore. Enter a new setup code.");
+}
+
+// ---- Talk button: hold to talk, or tap once and talk --------------------------------
+const talk = $("talk");
+let pressAt = 0, pressing = false;
+talk.addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  if (!token) return showSetup();
+  try { talk.setPointerCapture(e.pointerId); } catch (_) {}
+  pressing = true; pressAt = performance.now();
+  if (mode === "listen" && rec && rec.tap) { pressing = false; finishRecording(); return; }   // second tap: send
+  startListening({ hold: true });
+});
+function release() {
+  if (!pressing) return;
+  pressing = false;
+  if (mode !== "listen" || !rec) return;
+  if (performance.now() - pressAt < TAP_HOLD_MS) { rec.tap = true; render(); }   // quick tap: stop on silence
+  else finishRecording();
+}
+talk.addEventListener("pointerup", release);
+talk.addEventListener("pointercancel", release);
+talk.addEventListener("contextmenu", (e) => e.preventDefault());
+talk.addEventListener("keydown", (e) => {   // keyboard: Space/Enter toggles tap-mode listening
+  if (e.key !== " " && e.key !== "Enter") return;
+  e.preventDefault();
+  if (!token) return showSetup();
+  if (mode === "listen" && rec) finishRecording(); else startListening({ hold: false });
+});
+
+$("face").addEventListener("click", () => {
+  if (mode === "think" || mode === "speak") stopTurn(true);
+  else if (mode === "notice") setMode("idle");
+  else if (mode === "listen" && rec) finishRecording();
+});
+
+// ---- Typing ----------------------------------------------------------------------------
+$("typeBtn").addEventListener("click", () => {
+  const bar = $("typebar"); bar.hidden = !bar.hidden;
+  if (!bar.hidden) $("typed").focus();
+});
+$("typebar").addEventListener("submit", (e) => {
+  e.preventDefault();
+  if (!token) return showSetup();
+  const q = $("typed").value.trim();
+  if (!q) return;
+  audioNow(); stopTurn(false); if (rec) cancelRecording();
+  $("typed").value = ""; $("typed").blur();
+  runTurn(q, true, false);
+});
+
+// ---- Pairing -----------------------------------------------------------------------------
+function showSetup(msg) {
+  $("setup").hidden = false; $("setupErr").textContent = msg || "";
+  setTimeout(() => $("code").focus(), 50);
+}
+$("setupForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const code = $("code").value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (code.length < 6) { $("setupErr").textContent = "Enter the setup code (6 or more letters and numbers)."; return; }
+  $("connect").disabled = true; $("connect").textContent = "Connecting…"; $("setupErr").textContent = "";
+  try {
+    const r = await fetch(BRAIN + "/claim", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, name: "Orbit (phone)" }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.token) throw new Error(j.error || "That code didn't work.");
+    token = j.token; store.set("token", token);
+    $("setup").hidden = true; $("code").value = "";
+    if (!store.get("token", "")) toast("Connected. This browser won't remember it after you close it, so keep the code handy.", 6000);
+    else toast("Connected. Hold the button and ask something.");
+    hello();
+  } catch (err) {
+    $("setupErr").textContent = err.message === "Failed to fetch" ? "Couldn't reach the brain. Check your connection." : err.message;
+  } finally {
+    $("connect").disabled = false; $("connect").textContent = "Connect";
+  }
+});
+async function hello() {
+  try {
+    const r = await fetch(BRAIN + "/hello", { headers: { "X-Orbit-Token": token } });
+    if (r.status === 401) return unpaired();
+    const j = await r.json();
+    $("sDevice").textContent = `Connected as ${j.device || "Orbit"}`;
+  } catch (_) {}
+}
+
+// ---- Settings ----------------------------------------------------------------------------
+const seg = $("sModel");
+MODELS.forEach((m, i) => {
+  const b = document.createElement("button"); b.type = "button"; b.textContent = m.name;
+  b.addEventListener("click", () => { prefs.model = i; store.set("model", i); syncSettings(); });
+  seg.appendChild(b);
+});
+function syncSettings() {
+  [...seg.children].forEach((b, i) => b.setAttribute("aria-pressed", String(i === prefs.model)));
+  $("sSpeak").setAttribute("aria-checked", String(prefs.speak));
+  $("sTranslate").setAttribute("aria-checked", String(translating));
+  $("sVolume").value = Math.round(prefs.volume * 100);
+}
+$("gearBtn").addEventListener("click", () => { syncSettings(); $("settings").hidden = false; });
+$("sDone").addEventListener("click", () => ($("settings").hidden = true));
+$("settings").addEventListener("click", (e) => { if (e.target.id === "settings") $("settings").hidden = true; });
+$("sSpeak").addEventListener("click", () => { prefs.speak = !prefs.speak; store.set("speak", prefs.speak); syncSettings(); });
+$("sTranslate").addEventListener("click", () => {
+  setTranslating(!translating);
+  $("settings").hidden = true;
+  showNotice(translating ? "Translator on. Talk in Spanish or English. Say “stop translating” to end." : "Translator off.", true);
+});
+$("sVolume").addEventListener("input", (e) => {
+  prefs.volume = e.target.value / 100; store.set("volume", prefs.volume);
+  if (outGain) outGain.gain.value = prefs.volume;
+});
+$("sNew").addEventListener("click", async () => {
+  try {
+    const r = await fetch(BRAIN + "/config", { method: "POST", headers: { "X-Orbit-Token": token, "Content-Type": "application/json" }, body: JSON.stringify({ clear_conversation: true }) });
+    if (r.status === 401) { $("settings").hidden = true; return unpaired(); }
+    toast(r.ok ? "Fresh start. What's up?" : "Couldn't reach the brain to clear it.");
+  } catch (_) { toast("Couldn't reach the brain to clear it."); }
+});
+let forgetArmed = 0;
+$("sForget").addEventListener("click", () => {
+  const b = $("sForget");
+  if (performance.now() - forgetArmed > 4000) { forgetArmed = performance.now(); b.textContent = "Tap again to disconnect"; setTimeout(() => (b.textContent = "Disconnect"), 4000); return; }
+  token = ""; store.del("token"); b.textContent = "Disconnect";
+  $("settings").hidden = true; stopTurn(true); showSetup("Disconnected. Enter a setup code to connect again.");
+});
+
+// ---- The face ------------------------------------------------------------------------------
+const cv = $("face"), g = cv.getContext("2d");
+const F = { open: 1, scale: 1, lx: 0, ly: 0, fy: 0, mouth: 0, nextBlink: 0, blinkAt: 0, nextGlance: 0, gx: 0, gy: 0 };
+const ease = (c, t, r) => c + (t - c) * r;
+function sizeCanvas() {
+  const dpr = Math.min(3, window.devicePixelRatio || 1);
+  const w = cv.clientWidth || 300;
+  cv.width = Math.round(w * dpr); cv.height = Math.round(w * dpr);
+}
+window.addEventListener("resize", sizeCanvas);
+function rr(x, y, w, h, r) { r = Math.min(r, w / 2, h / 2); g.beginPath(); g.roundRect ? g.roundRect(x, y, w, h, r) : g.rect(x, y, w, h); g.fill(); }
+function drawFace(now) {
+  const W = cv.width, k = W / 466, cx = W / 2, cy = W / 2, R = W / 2;
+  g.clearRect(0, 0, W, W);
+  g.fillStyle = "#000"; g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.fill();
+  const tS = now / 1000;
+  const mood = mode === "listen" ? "listen" : mode === "think" ? "think" : mode === "speak" ? "speak"
+    : mode === "notice" ? (ui.noticeGood ? "idle" : "error") : "idle";
+  let tOpen = 1, tScale = 1, tFy = 0, tMouth = 0, lx = 0, ly = 0;
+  if (mood === "idle") {
+    if (now > F.nextGlance) { F.nextGlance = now + 2500 + Math.random() * 4000; const r = Math.floor(Math.random() * 5); F.gx = r === 0 ? -14 : r === 1 ? 14 : 0; F.gy = Math.random() < 0.33 ? -6 : 0; }
+    lx = F.gx + Math.sin(tS * 0.4) * 3; ly = F.gy;
+  } else if (mood === "listen") { tScale = 1.12; ly = -4; }
+  else if (mood === "think") { lx = 16 * Math.sin(tS * 1.3); ly = -14; tOpen = 0.85; }
+  else if (mood === "speak") { tScale = 0.8; tFy = -40; tMouth = 0.15 + levelOf(outAnalyser) * 0.85; }
+  else if (mood === "error") { tOpen = 0.45; ly = 8; }
+  if (!F.nextBlink) F.nextBlink = now + 3000;
+  if (now > F.nextBlink) { F.blinkAt = now; F.nextBlink = now + 2600 + Math.random() * 4200; }
+  let blink = 1; if (F.blinkAt && now - F.blinkAt < 180) blink = Math.abs(1 - 2 * ((now - F.blinkAt) / 180));
+  F.open = ease(F.open, tOpen, 0.25); F.scale = ease(F.scale, tScale, 0.2); F.lx = ease(F.lx, lx, 0.12); F.ly = ease(F.ly, ly, 0.12);
+  F.fy = ease(F.fy, tFy, 0.18); F.mouth = ease(F.mouth, tMouth, 0.5);
+
+  // Rings: breathing (idle), loudness (listening), orbit (thinking), soft red (trouble)
+  g.lineCap = "round";
+  if (mood === "listen") {
+    const th = (4 + micLevel * 26) * k;
+    g.strokeStyle = "#ff9a4d"; g.lineWidth = th; g.beginPath(); g.arc(cx, cy, R - th / 2 - 2 * k, 0, Math.PI * 2); g.stroke();
+  } else if (mood === "idle") {
+    const b = 0.5 + 0.5 * Math.sin(tS * 1.1);
+    g.strokeStyle = `rgba(150,156,168,${0.12 + 0.18 * b})`; g.lineWidth = 2.5 * k; g.beginPath(); g.arc(cx, cy, R - 3 * k, 0, Math.PI * 2); g.stroke();
+  } else if (mood === "think") {
+    const a = ((tS * 220) % 360) * Math.PI / 180;
+    g.lineWidth = 5 * k; g.strokeStyle = "#ff9a4d"; g.beginPath(); g.arc(cx, cy, R - 4 * k, a, a + 70 * Math.PI / 180); g.stroke();
+    g.strokeStyle = "rgba(255,154,77,.5)"; g.beginPath(); g.arc(cx, cy, R - 4 * k, a + Math.PI, a + Math.PI + 35 * Math.PI / 180); g.stroke();
+  } else if (mood === "error") {
+    g.strokeStyle = "rgba(255,107,107,.6)"; g.lineWidth = 3 * k; g.beginPath(); g.arc(cx, cy, R - 4 * k, 0, Math.PI * 2); g.stroke();
+  }
+  const eye = mood === "error" ? "#f6c9c4" : "#f0eee8";
+  const ey = cy + (-20 + F.fy + F.ly) * k, gap = 70 * F.scale * k;
+  const ew = 44 * F.scale * k, eh = Math.max(6 * k, 84 * F.scale * k * F.open * blink);
+  g.fillStyle = eye;
+  rr(cx - gap + F.lx * k - ew / 2, ey - eh / 2, ew, eh, Math.min(ew, eh) / 2);
+  rr(cx + gap + F.lx * k - ew / 2, ey - eh / 2, ew, eh, Math.min(ew, eh) / 2);
+  const my = cy + (62 * F.scale + F.fy) * k;
+  if (mood === "speak") { const h = (4 + F.mouth * 26) * k; g.fillStyle = "#ff9a4d"; rr(cx - 22 * k, my - h / 2, 44 * k, h, Math.min(22 * k, h / 2)); }
+  else if (mood === "listen") { g.fillStyle = "#ff9a4d"; g.beginPath(); g.arc(cx + F.lx * k / 2, my, 10 * k, 0, Math.PI * 2); g.fill(); }
+  else if (mood === "error") { g.strokeStyle = eye; g.lineWidth = 4 * k; g.beginPath(); g.arc(cx, my + 26 * k, 28 * k, Math.PI * 1.22, Math.PI * 1.78); g.stroke(); }
+  else { g.fillStyle = "#30343c"; rr(cx - 18 * k + F.lx * k / 2, my - 3 * k, 36 * k, 6 * k, 3 * k); }
+  // The clock, idle only, like the device
+  if (mood === "idle") {
+    const d = new Date();
+    g.fillStyle = "#969ca8"; g.font = `700 ${30 * k}px "Atkinson Hyperlegible", sans-serif`; g.textAlign = "center";
+    g.fillText(d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).replace(/\s?[AP]M/i, ""), cx, 96 * k);
+    g.fillStyle = "#4a4f59"; g.font = `${22 * k}px "Atkinson Hyperlegible", sans-serif`;
+    g.fillText(d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" }), cx, 380 * k);
+  }
+}
+
+function frame(now) {
+  if (mode === "notice" && now - modeSince > 7000) setMode("idle");
+  tickSpeaking(now);
+  drawFace(now);
+  requestAnimationFrame(frame);
+}
+
+// ---- Start ---------------------------------------------------------------------------------
+sizeCanvas();
+syncSettings();
+render();
+requestAnimationFrame(frame);
+if (!token) showSetup(); else hello();
+</script>
+</body>
+</html>
