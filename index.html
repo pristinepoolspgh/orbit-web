@@ -508,6 +508,7 @@ talk.addEventListener("keydown", (e) => {   // keyboard: Space/Enter toggles tap
 $("face").addEventListener("click", () => {
   if (mode === "think" || mode === "speak") stopTurn(true);
   else if (mode === "notice") setMode("idle");
+  else if (mode === "idle") { poke(); modeSince = performance.now(); }
   else if (mode === "listen" && rec) finishRecording();
 });
 
@@ -601,9 +602,14 @@ $("sForget").addEventListener("click", () => {
   $("settings").hidden = true; stopTurn(true); showSetup("Disconnected. Enter a setup code to connect again.");
 });
 
-// ---- The face ------------------------------------------------------------------------------
+// ---- The face ----------------------------------------------------------------------------
+// Orbi's personality: happy eyes and blushing cheeks when it talks, a little moon
+// that orbits while it thinks (its eyes follow it), winks and smiles when idle,
+// a bounce on every change of mood, a giggle when you poke it, z's when it dozes.
 const cv = $("face"), g = cv.getContext("2d");
-const F = { open: 1, scale: 1, lx: 0, ly: 0, fy: 0, mouth: 0, nextBlink: 0, blinkAt: 0, nextGlance: 0, gx: 0, gy: 0 };
+const F = { open: 1, scale: 1, lx: 0, ly: 0, fy: 0, mouth: 0, smile: 0.6, happy: 0, blush: 0.3,
+  nextBlink: 0, blinkAt: 0, winkAt: 0, nextWink: 0, nextGlance: 0, gx: 0, gy: 0,
+  bounce: 0, bv: 0, lastMood: "", giggleUntil: 0, moonA: -Math.PI / 2 };
 const ease = (c, t, r) => c + (t - c) * r;
 function sizeCanvas() {
   const dpr = Math.min(3, window.devicePixelRatio || 1);
@@ -611,61 +617,144 @@ function sizeCanvas() {
   cv.width = Math.round(w * dpr); cv.height = Math.round(w * dpr);
 }
 window.addEventListener("resize", sizeCanvas);
-function rr(x, y, w, h, r) { r = Math.min(r, w / 2, h / 2); g.beginPath(); g.roundRect ? g.roundRect(x, y, w, h, r) : g.rect(x, y, w, h); g.fill(); }
+function rr(x, y, w, h, r) { r = Math.max(0, Math.min(r, w / 2, h / 2)); g.beginPath(); g.roundRect ? g.roundRect(x, y, w, h, r) : g.rect(x, y, w, h); g.fill(); }
+function poke() { F.giggleUntil = performance.now() + 1400; F.bv -= 0.09; }
+function moodNow(now) {
+  if (mode === "listen") return "listen";
+  if (mode === "think") return "think";
+  if (mode === "speak") return "speak";
+  if (mode === "notice") return ui.noticeGood ? "happy" : "error";
+  if (now < F.giggleUntil) return "happy";
+  return now - modeSince > 60000 ? "sleepy" : "idle";
+}
+function drawEye(x, y, w, h, open, happy, color) {
+  g.fillStyle = color; g.strokeStyle = color;
+  const a = Math.max(0, Math.min(1, (happy - 0.4) / 0.4));   // 0 = round eyes, 1 = happy arcs
+  if (a < 1) {
+    g.globalAlpha = 1 - a;
+    const eh = Math.max(w * 0.14, h * open * (1 - a * 0.8));
+    rr(x - w / 2, y - eh / 2, w, eh, Math.min(w, eh) / 2);
+    // A glint makes them look alive.
+    if (open > 0.6 && eh > w) { g.fillStyle = "rgba(0,0,0,.18)"; g.beginPath(); g.arc(x + w * 0.16, y - eh * 0.22, w * 0.13, 0, Math.PI * 2); g.fill(); }
+    g.globalAlpha = 1;
+  }
+  if (a > 0) {
+    // Happy eyes: a thick upside-down U, like a smile with its eyes.
+    g.globalAlpha = a; g.lineCap = "round"; g.lineWidth = w * 0.42;
+    g.beginPath(); g.arc(x, y + h * 0.18, w * 0.62, Math.PI * 1.1, Math.PI * 1.9); g.stroke();
+    g.globalAlpha = 1;
+  }
+}
 function drawFace(now) {
   const W = cv.width, k = W / 466, cx = W / 2, cy = W / 2, R = W / 2;
   g.clearRect(0, 0, W, W);
   g.fillStyle = "#000"; g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.fill();
   const tS = now / 1000;
-  const mood = mode === "listen" ? "listen" : mode === "think" ? "think" : mode === "speak" ? "speak"
-    : mode === "notice" ? (ui.noticeGood ? "idle" : "error") : "idle";
-  let tOpen = 1, tScale = 1, tFy = 0, tMouth = 0, lx = 0, ly = 0;
-  if (mood === "idle") {
-    if (now > F.nextGlance) { F.nextGlance = now + 2500 + Math.random() * 4000; const r = Math.floor(Math.random() * 5); F.gx = r === 0 ? -14 : r === 1 ? 14 : 0; F.gy = Math.random() < 0.33 ? -6 : 0; }
-    lx = F.gx + Math.sin(tS * 0.4) * 3; ly = F.gy;
-  } else if (mood === "listen") { tScale = 1.12; ly = -4; }
-  else if (mood === "think") { lx = 16 * Math.sin(tS * 1.3); ly = -14; tOpen = 0.85; }
-  else if (mood === "speak") { tScale = 0.8; tFy = -40; tMouth = 0.15 + levelOf(outAnalyser) * 0.85; }
-  else if (mood === "error") { tOpen = 0.45; ly = 8; }
-  if (!F.nextBlink) F.nextBlink = now + 3000;
-  if (now > F.nextBlink) { F.blinkAt = now; F.nextBlink = now + 2600 + Math.random() * 4200; }
-  let blink = 1; if (F.blinkAt && now - F.blinkAt < 180) blink = Math.abs(1 - 2 * ((now - F.blinkAt) / 180));
-  F.open = ease(F.open, tOpen, 0.25); F.scale = ease(F.scale, tScale, 0.2); F.lx = ease(F.lx, lx, 0.12); F.ly = ease(F.ly, ly, 0.12);
-  F.fy = ease(F.fy, tFy, 0.18); F.mouth = ease(F.mouth, tMouth, 0.5);
+  const mood = moodNow(now);
+  if (mood !== F.lastMood) { F.bv -= mood === "error" ? 0.03 : 0.07; F.lastMood = mood; }   // a little hop on every change
+  // Spring for the bounce (squash and stretch)
+  F.bv += -F.bounce * 0.18; F.bv *= 0.82; F.bounce += F.bv;
 
-  // Rings: breathing (idle), loudness (listening), orbit (thinking), soft red (trouble)
+  let tOpen = 1, tScale = 1, tFy = 0, tMouth = 0, lx = 0, ly = 0, tSmile = 0.6, tHappy = 0, tBlush = 0.45;
+  const out = levelOf(outAnalyser);
+  if (mood === "idle") {
+    if (now > F.nextGlance) { F.nextGlance = now + 2200 + Math.random() * 3800; const r = Math.floor(Math.random() * 6); F.gx = r === 0 ? -16 : r === 1 ? 16 : r === 2 ? -8 : 0; F.gy = Math.random() < 0.3 ? -8 : 0; }
+    lx = F.gx + Math.sin(tS * 0.4) * 3; ly = F.gy + Math.sin(tS * 0.9) * 2;
+    tSmile = 0.55 + 0.15 * Math.sin(tS * 0.3);
+  } else if (mood === "listen") { tScale = 1.14 + micLevel * 0.12; ly = -4; tSmile = 0.2; tBlush = 0.15; }
+  else if (mood === "think") {
+    F.moonA += 0.055;
+    lx = Math.cos(F.moonA) * 18; ly = Math.sin(F.moonA) * 12 - 6;   // eyes follow the moon
+    tOpen = 0.9; tSmile = 0.1; tBlush = 0.15;
+  }
+  else if (mood === "speak") { tScale = 0.82; tFy = -36; tMouth = 0.15 + out * 0.85; tHappy = 1; tBlush = 0.85; }
+  else if (mood === "happy") { tHappy = 1; tSmile = 1; tBlush = 0.9; ly = -4; }
+  else if (mood === "error") { tOpen = 0.45; ly = 8; tSmile = -0.7; tBlush = 0; }
+  else if (mood === "sleepy") { tOpen = 0.1; ly = 8; tSmile = 0.3; tBlush = 0.2; }
+
+  // Blinks and the occasional wink
+  if (!F.nextBlink) { F.nextBlink = now + 3000; F.nextWink = now + 14000; }
+  if (now > F.nextBlink && mood !== "sleepy") { F.blinkAt = now; F.nextBlink = now + 2600 + Math.random() * 4200; }
+  if (mood === "idle" && now > F.nextWink) { F.winkAt = now; F.nextWink = now + 15000 + Math.random() * 20000; }
+  const bl = (t0, d) => (t0 && now - t0 < d ? Math.abs(1 - 2 * ((now - t0) / d)) : 1);
+  const blink = bl(F.blinkAt, 180), wink = bl(F.winkAt, 420);
+
+  F.open = ease(F.open, tOpen, 0.25); F.scale = ease(F.scale, tScale, 0.2); F.lx = ease(F.lx, lx, 0.12); F.ly = ease(F.ly, ly, 0.12);
+  F.fy = ease(F.fy, tFy, 0.18); F.mouth = ease(F.mouth, tMouth, 0.5); F.smile = ease(F.smile, tSmile, 0.12);
+  F.happy = ease(F.happy, tHappy, 0.15); F.blush = ease(F.blush, tBlush, 0.08);
+
+  // Rings and the orbiting moon
   g.lineCap = "round";
   if (mood === "listen") {
     const th = (4 + micLevel * 26) * k;
     g.strokeStyle = "#ff9a4d"; g.lineWidth = th; g.beginPath(); g.arc(cx, cy, R - th / 2 - 2 * k, 0, Math.PI * 2); g.stroke();
-  } else if (mood === "idle") {
+  } else if (mood === "idle" || mood === "sleepy" || mood === "happy") {
     const b = 0.5 + 0.5 * Math.sin(tS * 1.1);
     g.strokeStyle = `rgba(150,156,168,${0.12 + 0.18 * b})`; g.lineWidth = 2.5 * k; g.beginPath(); g.arc(cx, cy, R - 3 * k, 0, Math.PI * 2); g.stroke();
   } else if (mood === "think") {
-    const a = ((tS * 220) % 360) * Math.PI / 180;
-    g.lineWidth = 5 * k; g.strokeStyle = "#ff9a4d"; g.beginPath(); g.arc(cx, cy, R - 4 * k, a, a + 70 * Math.PI / 180); g.stroke();
-    g.strokeStyle = "rgba(255,154,77,.5)"; g.beginPath(); g.arc(cx, cy, R - 4 * k, a + Math.PI, a + Math.PI + 35 * Math.PI / 180); g.stroke();
+    g.strokeStyle = "rgba(255,154,77,.22)"; g.lineWidth = 2 * k; g.beginPath(); g.arc(cx, cy, R - 22 * k, 0, Math.PI * 2); g.stroke();
+    // trail
+    for (let i = 1; i <= 6; i++) {
+      const a = F.moonA - i * 0.09;
+      g.fillStyle = `rgba(255,154,77,${0.35 - i * 0.05})`;
+      g.beginPath(); g.arc(cx + Math.cos(a) * (R - 22 * k), cy + Math.sin(a) * (R - 22 * k), (13 - i) * k, 0, Math.PI * 2); g.fill();
+    }
+    g.fillStyle = "#ff9a4d"; g.beginPath(); g.arc(cx + Math.cos(F.moonA) * (R - 22 * k), cy + Math.sin(F.moonA) * (R - 22 * k), 14 * k, 0, Math.PI * 2); g.fill();
   } else if (mood === "error") {
     g.strokeStyle = "rgba(255,107,107,.6)"; g.lineWidth = 3 * k; g.beginPath(); g.arc(cx, cy, R - 4 * k, 0, Math.PI * 2); g.stroke();
   }
+
+  // Squash and stretch around the face's center
+  g.save();
+  const sq = F.bounce;
+  g.translate(cx, cy + 40 * k); g.scale(1 - sq * 0.6, 1 + sq); g.translate(-cx, -(cy + 40 * k));
   const eye = mood === "error" ? "#f6c9c4" : "#f0eee8";
   const ey = cy + (-20 + F.fy + F.ly) * k, gap = 70 * F.scale * k;
-  const ew = 44 * F.scale * k, eh = Math.max(6 * k, 84 * F.scale * k * F.open * blink);
-  g.fillStyle = eye;
-  rr(cx - gap + F.lx * k - ew / 2, ey - eh / 2, ew, eh, Math.min(ew, eh) / 2);
-  rr(cx + gap + F.lx * k - ew / 2, ey - eh / 2, ew, eh, Math.min(ew, eh) / 2);
-  const my = cy + (62 * F.scale + F.fy) * k;
-  if (mood === "speak") { const h = (4 + F.mouth * 26) * k; g.fillStyle = "#ff9a4d"; rr(cx - 22 * k, my - h / 2, 44 * k, h, Math.min(22 * k, h / 2)); }
-  else if (mood === "listen") { g.fillStyle = "#ff9a4d"; g.beginPath(); g.arc(cx + F.lx * k / 2, my, 10 * k, 0, Math.PI * 2); g.fill(); }
-  else if (mood === "error") { g.strokeStyle = eye; g.lineWidth = 4 * k; g.beginPath(); g.arc(cx, my + 26 * k, 28 * k, Math.PI * 1.22, Math.PI * 1.78); g.stroke(); }
-  else { g.fillStyle = "#30343c"; rr(cx - 18 * k + F.lx * k / 2, my - 3 * k, 36 * k, 6 * k, 3 * k); }
+  const ew = 44 * F.scale * k, eh = 84 * F.scale * k;
+  drawEye(cx - gap + F.lx * k, ey, ew, eh, F.open * blink * wink, F.happy, eye);
+  drawEye(cx + gap + F.lx * k, ey, ew, eh, F.open * blink, F.happy, eye);
+  // Cheeks
+  if (F.blush > 0.02) {
+    g.fillStyle = `rgba(255,128,150,${0.6 * F.blush})`;
+    for (const side of [-1, 1]) { g.beginPath(); g.ellipse(cx + side * (gap + 26 * k) + F.lx * k * 0.6, ey + 52 * F.scale * k, 22 * k, 12 * k, 0, 0, Math.PI * 2); g.fill(); }
+  }
+  // Mouth
+  const my = cy + (62 * F.scale + F.fy) * k + F.ly * k * 0.4;
+  if (mood === "speak") {
+    const h = (6 + F.mouth * 28) * k, w = (40 + F.mouth * 10) * k;
+    g.fillStyle = "#ff9a4d"; rr(cx - w / 2, my - h / 2, w, h, Math.min(w / 2, h / 2));
+    if (h > 18 * k) { g.fillStyle = "#c2563f"; g.beginPath(); g.ellipse(cx, my + h * 0.22, w * 0.28, h * 0.18, 0, 0, Math.PI * 2); g.fill(); }   // a little tongue
+  } else if (mood === "listen") {
+    const r = (10 + micLevel * 8) * k;
+    g.fillStyle = "#ff9a4d"; g.beginPath(); g.arc(cx + F.lx * k / 2, my, r, 0, Math.PI * 2); g.fill();
+  } else if (mood === "think") {
+    g.strokeStyle = "#969ca8"; g.lineWidth = 6 * k; g.beginPath(); g.moveTo(cx - 14 * k + F.lx * k / 2, my + 2 * k); g.quadraticCurveTo(cx + F.lx * k / 2, my + 7 * k, cx + 16 * k + F.lx * k / 2, my - 6 * k); g.stroke();
+  } else {
+    // Smile (or frown) as one curve: smile 1 = big grin, negative = frown
+    const s = F.smile, w = (26 + Math.abs(s) * 14) * k;
+    g.strokeStyle = mood === "error" ? eye : s > 0.8 ? "#ff9a4d" : "#7c828e"; g.lineWidth = 6 * k;
+    g.beginPath(); g.moveTo(cx - w + F.lx * k / 2, my); g.quadraticCurveTo(cx + F.lx * k / 2, my + s * 26 * k, cx + w + F.lx * k / 2, my); g.stroke();
+  }
+  g.restore();
+
+  // Sleepy z's
+  if (mood === "sleepy") {
+    g.fillStyle = "#969ca8"; g.textAlign = "center";
+    for (let i = 0; i < 3; i++) {
+      const p = ((tS * 0.35 + i / 3) % 1);
+      g.globalAlpha = Math.sin(p * Math.PI) * 0.8;
+      g.font = `700 ${(16 + p * 14) * k}px "Atkinson Hyperlegible", sans-serif`;
+      g.fillText("z", cx + gap + (30 + p * 40) * k, ey - (30 + p * 90) * k);
+    }
+    g.globalAlpha = 1;
+  }
   // The clock, idle only, like the device
-  if (mood === "idle") {
+  if (mood === "idle" || mood === "sleepy" || mood === "happy") {
     const d = new Date();
     g.fillStyle = "#969ca8"; g.font = `700 ${30 * k}px "Atkinson Hyperlegible", sans-serif`; g.textAlign = "center";
     g.fillText(d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).replace(/\s?[AP]M/i, ""), cx, 96 * k);
     g.fillStyle = "#4a4f59"; g.font = `${22 * k}px "Atkinson Hyperlegible", sans-serif`;
-    g.fillText(d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" }), cx, 380 * k);
+    g.fillText(d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" }), cx, 392 * k);
   }
 }
 
