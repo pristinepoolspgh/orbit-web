@@ -138,12 +138,12 @@ input[type=range]{width:140px;accent-color:var(--accent)}
 <div class="sheet" id="settings" hidden>
   <div class="card" role="dialog" aria-labelledby="setTitle">
     <h2 id="setTitle">Settings</h2>
-    <div class="row"><span>Translator<small>Spanish in, English out, and back</small></span><button class="switch" id="sTranslate" role="switch" aria-checked="false" aria-label="Translator"></button></div>
+    <div class="row"><span>Translator<small>Spanish comes out in English, English in Spanish</small></span><button class="switch" id="sTranslate" role="switch" aria-checked="false" aria-label="Translator"></button></div>
     <div class="row"><span>Speak answers<small>Off: captions only</small></span><button class="switch" id="sSpeak" role="switch" aria-checked="true" aria-label="Speak answers"></button></div>
     <div class="row"><span>Volume</span><input type="range" id="sVolume" min="0" max="100" aria-label="Volume"></div>
     <div class="row"><span>Brain</span><div class="seg" id="sModel"></div></div>
     <div class="row"><span>New conversation<small>Forget the last few questions</small></span><button class="ghost" id="sNew">Start fresh</button></div>
-    <div class="row"><span>This phone<small id="sDevice">Connected</small></span><button class="ghost danger" id="sForget">Disconnect</button></div>
+    <div class="row"><span>This phone<small id="sDevice">Version 3</small></span><button class="ghost danger" id="sForget">Disconnect</button></div>
     <button class="primary" id="sDone">Done</button>
   </div>
 </div>
@@ -158,6 +158,7 @@ input[type=range]{width:140px;accent-color:var(--accent)}
 // NDJSON events, then plays the 16 kHz speech that follows as it streams.
 // ---------------------------------------------------------------------------
 const BRAIN = "https://axpkzvhthtslymnokdiz.supabase.co/functions/v1/orbit-brain";
+const APP_VERSION = 3;   // shown in Settings, so it's easy to tell which copy a phone is running
 const MODELS = [
   { id: "claude-sonnet-5-5", name: "Balanced" },
   { id: "claude-haiku-4-5-20251001", name: "Fastest" },
@@ -178,27 +179,31 @@ const prefs = {
   speak: store.get("speak", true),
   volume: store.get("volume", 0.9),
 };
-let translating = false;
+// Translator mode survives the app being closed and reopened (phones do that
+// constantly), but switches itself off after an hour without a translation.
+const TRANSLATE_KEEP_MS = 60 * 60 * 1000;
+let translating = Date.now() - store.get("translate", 0) < TRANSLATE_KEEP_MS;
+const LANG_NAMES = { en: "English", es: "Spanish" };
 
 // ---- UI state -------------------------------------------------------------------
 let mode = "idle";   // idle | listen | think | speak | notice
 let modeSince = 0;
-const ui = { heard: "", caption: "", status: "", notice: "", noticeGood: false };
+const ui = { heard: "", caption: "", status: "", notice: "", noticeGood: false, dir: "" };
 function setMode(m) { mode = m; modeSince = performance.now(); render(); }
 function render() {
   $("heard").textContent = (mode === "think" || mode === "speak") ? ui.heard : "";
   $("caption").textContent = mode === "speak" ? ui.caption : "";
   $("notice").textContent = mode === "notice" ? ui.notice : "";
   $("status").textContent = mode === "listen" ? (ui.status || (rec && rec.tap ? "Listening. I'll stop when you pause." : "Listening"))
-    : mode === "think" ? (ui.status || "Thinking") : "";
+    : mode === "think" ? (ui.status || "Thinking") : mode === "speak" ? ui.dir : "";
   $("pill").hidden = !translating;
   const t = $("talk");
   t.classList.toggle("live", mode === "listen");
   t.classList.toggle("busy", mode === "think" || mode === "speak");
   t.setAttribute("aria-label", mode === "think" || mode === "speak" ? "Interrupt and ask something else" : "Hold to talk");
-  $("hint").textContent = mode === "listen" ? (rec && rec.tap ? "Tap to send" : "Let go to send")
+  $("hint").textContent = mode === "listen" ? (rec && rec.tap && !pressing ? "I\u2019ll send when you pause \u00b7 tap the face to cancel" : "Let go to send")
     : (mode === "think" || mode === "speak") ? "Tap the face to stop · hold the button to interrupt"
-    : translating ? "Translator on · say “stop translating” to end" : "Hold to talk, or tap once and just talk";
+    : translating ? "Spanish ⇄ English · say “stop translating” to end" : "Hold to talk, or tap once and just talk";
 }
 let toastTimer = 0;
 function toast(msg, ms = 3500) {
@@ -261,25 +266,49 @@ document.addEventListener("visibilitychange", () => {
   if (document.hidden) { if (rec) cancelRecording(); stopTurn(true); closeMic(); }
 });
 
+// Voice detection for hands-free listening: the same design as the device's.
+// The noise floor starts LOW and only adapts on blocks that aren't speech, so a
+// sentence that begins the instant listening starts still counts as speech.
+// (Seeding the floor from the first block made every listen after the first
+// one deaf: by then the mic is already open, so the first block is your voice.)
+// Between questions the open mic keeps measuring the room, so on a loud jobsite the
+// next listen already knows what "quiet" sounds like there.
+let ambient = 0;
+function trackAmbient(rms) {
+  ambient = !ambient ? rms : rms > ambient ? ambient * 1.01 : ambient * 0.9 + rms * 0.1;   // creeps up, drops fast
+}
+function newVad() { return { floor: Math.min(0.025, Math.max(0.004, ambient)), heard: false, quiet: 0, speech: 0 }; }
+function vadUpdate(v, rms, blockMs) {
+  const loud = rms > v.floor * 3 + 0.01;
+  if (loud) {
+    v.speech += blockMs; v.quiet = 0; if (v.speech >= 120) v.heard = true;
+    v.floor += (rms - v.floor) * 0.0035;   // a steady roar becomes the floor in a second or two; speech, with its gaps, doesn't
+  } else {
+    v.floor = rms > v.floor ? v.floor * 0.97 + rms * 0.03 : v.floor * 0.8 + rms * 0.2;   // slowly up, quickly down
+    v.quiet += blockMs;
+    if (!v.heard && v.quiet > 400) v.speech = 0;   // a click or a cough isn't speech
+  }
+  return loud;
+}
+
+let lastMicBlock = 0, micRevives = 0;
 function onMicBlock(data) {
-  if (!rec) return;
+  lastMicBlock = performance.now(); micRevives = 0;
+  let s = 0; for (let i = 0; i < data.length; i++) s += data[i] * data[i];
+  const rms = Math.sqrt(s / data.length);
+  if (!rec) { if (mode === "idle" || mode === "think") trackAmbient(rms); return; }
   const copy = new Float32Array(data);
   rec.chunks.push(copy);
   rec.samples += copy.length;
-  let s = 0; for (let i = 0; i < copy.length; i++) s += copy[i] * copy[i];
-  const rms = Math.sqrt(s / copy.length);
   micLevel = Math.min(1, rms * 9);
-  // Voice detection for tap mode: a slowly rising noise floor, speech well above it.
+  if (rms > rec.peak) rec.peak = rms;
   const blockMs = (copy.length / ac.sampleRate) * 1000;
-  rec.floor = rec.floor === null ? rms : Math.min(rec.floor * 1.02 + 1e-5, Math.max(rms, rec.floor * 0.9));
-  const loud = rms > Math.max(0.012, rec.floor * 3);
-  if (loud) { rec.speech += blockMs; rec.quiet = 0; } else rec.quiet += blockMs;
-  if (rec.speech > 150) rec.heardSpeech = true;
+  vadUpdate(rec.vad, rms, blockMs);
   const elapsed = (rec.samples / ac.sampleRate) * 1000;
-  if (elapsed >= MAX_RECORD_MS) return finishRecording();
-  if (rec.tap) {
-    if (rec.heardSpeech && rec.quiet >= SILENCE_STOP_MS) finishRecording();
-    else if (!rec.heardSpeech && elapsed >= NO_SPEECH_STOP_MS) {
+  if (elapsed >= MAX_RECORD_MS) return finishRecording(true);
+  if (rec.tap && !pressing) {
+    if (rec.vad.heard && rec.vad.quiet >= SILENCE_STOP_MS) finishRecording(false);
+    else if (!rec.vad.heard && elapsed >= NO_SPEECH_STOP_MS) {
       const follow = rec.followUp;
       cancelRecording();
       if (follow) setMode("idle"); else showNotice("I didn't hear anything. Hold the button and talk.");
@@ -287,30 +316,73 @@ function onMicBlock(data) {
   }
 }
 
+function micAlive() {
+  if (!mic) return false;
+  const t = mic.stream.getAudioTracks()[0];
+  return !!t && t.readyState === "live" && !t.muted;
+}
+
+let listenSeq = 0;
 async function startListening({ hold, followUp = false }) {
+  const seq = ++listenSeq;
   stopTurn(false);
-  audioNow();
+  const ctx = audioNow();
   ui.heard = ui.caption = ui.notice = ""; ui.status = followUp ? "Go ahead" : "";
-  try { await openMic(); }
-  catch (e) {
+  try {
+    if (mic && !micAlive()) closeMic();        // iOS can end the track behind our back: get a fresh one
+    await openMic();
+    // iOS can leave the audio engine "interrupted"; don't wait on it forever.
+    if (ctx.state !== "running") await Promise.race([ctx.resume().catch(() => {}), new Promise((r) => setTimeout(r, 800))]);
+  } catch (e) {
     showNotice(e && e.name === "NotAllowedError"
       ? "Orbi needs the microphone. Allow it for this site in your browser settings, or tap the keyboard to type."
       : "This browser can't use the microphone here. Tap the keyboard button to type instead.");
     return;
   }
-  rec = { chunks: [], samples: 0, tap: !hold, followUp, floor: null, speech: 0, quiet: 0, heardSpeech: false, started: performance.now() };
+  if (seq !== listenSeq) return;               // something newer started while the mic was opening
+  // The finger may already be up (the first press waits on the permission prompt):
+  // then it was a tap, so listen hands-free instead of waiting for a release that already happened.
+  const stillHeld = hold && pressing;
+  rec = { chunks: [], samples: 0, tap: !stillHeld, followUp, vad: newVad(), peak: 0, started: performance.now() };
+  lastMicBlock = performance.now();
   setMode("listen");
 }
 function cancelRecording() { rec = null; micLevel = 0; }
-async function finishRecording() {
+// byUser: the person ended it (released or tapped), as opposed to the silence detector.
+async function finishRecording(byUser) {
   if (!rec) return;
   const r = rec; rec = null; micLevel = 0;
   const ms = (r.samples / ac.sampleRate) * 1000;
-  if (ms < MIN_RECORD_MS || (r.tap && !r.heardSpeech)) { setMode("idle"); return; }
+  if (ms < MIN_RECORD_MS) { setMode("idle"); return; }
+  // Nothing but silence: don't bother the brain. If they ended it themselves and there
+  // was any sound at all, send it anyway and let speech recognition be the judge.
+  if (!r.vad.heard && !(byUser && r.peak > 0.01)) {
+    if (r.followUp || !byUser) setMode("idle"); else showNotice("I didn't hear anything. Hold the button and talk.");
+    return;
+  }
   ui.status = ""; setMode("think");
   const pcm = await to16kPcm(r.chunks, ac.sampleRate);
   runTurn(pcm, false, r.followUp);
 }
+
+// Listening but the microphone has stopped delivering sound (iOS does this after
+// calls, Siri, or switching apps): reopen it instead of sitting there deaf.
+setInterval(async () => {
+  if (mode !== "listen" || !rec) return;
+  if (performance.now() - lastMicBlock < 1500) return;
+  const keep = { hold: !rec.tap, followUp: rec.followUp };
+  const seq = ++listenSeq;
+  cancelRecording(); closeMic();
+  if (++micRevives > 2) { micRevives = 0; return showNotice("The microphone stopped. Tap the button to try again."); }
+  try {
+    await openMic();
+    if (ac.state !== "running") await Promise.race([ac.resume().catch(() => {}), new Promise((r) => setTimeout(r, 800))]);
+  } catch (_) { return showNotice("The microphone stopped. Tap the button to try again."); }
+  if (seq !== listenSeq || mode !== "listen") return;
+  rec = { chunks: [], samples: 0, tap: !(keep.hold && pressing), followUp: keep.followUp, vad: newVad(), peak: 0, started: performance.now() };
+  lastMicBlock = performance.now();
+  render();
+}, 500);
 
 // Resample to 16 kHz mono 16-bit (what the brain's speech recognition takes).
 async function to16kPcm(chunks, rate) {
@@ -387,7 +459,8 @@ function stopTurn(toIdle) {
 async function runTurn(body, isText, followUp) {
   const t = { abort: new AbortController(), player: null, done: false, gotAudio: false, replyQuestion: false, followUp, cancelled: false, speakStart: 0 };
   turn = t;
-  ui.heard = isText ? body : ""; ui.caption = ""; ui.notice = ""; ui.status = "";
+  ui.heard = isText ? body : ""; ui.caption = ""; ui.notice = ""; ui.status = ""; ui.dir = "";
+  if (translating) store.set("translate", Date.now());
   setMode("think");
   const headers = {
     "X-Orbit-Token": token,
@@ -424,7 +497,11 @@ async function runTurn(body, isText, followUp) {
         let ev; try { ev = JSON.parse(line); } catch (_) { continue; }
         if (ev.t === "heard") { ui.heard = ev.text || ""; render(); }
         else if (ev.t === "status") { ui.status = ev.text || ""; render(); }
-        else if (ev.t === "reply") { ui.caption = ev.text || ""; t.replyQuestion = /\?\s*$/.test(ui.caption); }
+        else if (ev.t === "reply") {
+          ui.caption = ev.text || ""; t.replyQuestion = /\?\s*$/.test(ui.caption);
+          // In translator mode, say which way it went: "Spanish → English".
+          ui.dir = ev.from && ev.lang && LANG_NAMES[ev.from] && LANG_NAMES[ev.lang] ? `${LANG_NAMES[ev.from]} → ${LANG_NAMES[ev.lang]}` : "";
+        }
         else if (ev.t === "error") { notice = ev.text || "Something went wrong."; }
         else if (ev.t === "mode") { setTranslating(!!ev.translate); }
         else if (ev.t === "audio") {
@@ -468,6 +545,7 @@ function tickSpeaking(now) {
 
 function setTranslating(on) {
   translating = on;
+  if (on) store.set("translate", Date.now()); else store.del("translate");
   $("sTranslate").setAttribute("aria-checked", String(on));
   render();
 }
@@ -485,15 +563,24 @@ talk.addEventListener("pointerdown", (e) => {
   if (!token) return showSetup();
   try { talk.setPointerCapture(e.pointerId); } catch (_) {}
   pressing = true; pressAt = performance.now();
-  if (mode === "listen" && rec && rec.tap) { pressing = false; finishRecording(); return; }   // second tap: send
+  // Already listening hands-free (after a tap, or after Orbi asked something): keep
+  // recording through the press. The release decides what it meant.
+  if (mode === "listen" && rec) { rec.pressedOver = true; render(); return; }
   startListening({ hold: true });
 });
 function release() {
   if (!pressing) return;
   pressing = false;
-  if (mode !== "listen" || !rec) return;
-  if (performance.now() - pressAt < TAP_HOLD_MS) { rec.tap = true; render(); }   // quick tap: stop on silence
-  else finishRecording();
+  if (mode !== "listen" || !rec) return;   // the mic is still opening: startListening sees the finger is up
+  const quick = performance.now() - pressAt < TAP_HOLD_MS;
+  if (rec.pressedOver) {
+    rec.pressedOver = false;
+    // A quick tap while it listens means "done". With nothing said yet it means "start over, I'm talking now".
+    if (quick && !rec.vad.heard) { rec.vad = newVad(); rec.chunks = []; rec.samples = 0; rec.peak = 0; rec.followUp = false; rec.tap = true; render(); return; }
+    return finishRecording(true);
+  }
+  if (quick) { rec.tap = true; render(); }   // quick tap: hands-free, stops when you pause
+  else finishRecording(true);
 }
 talk.addEventListener("pointerup", release);
 talk.addEventListener("pointercancel", release);
@@ -502,14 +589,14 @@ talk.addEventListener("keydown", (e) => {   // keyboard: Space/Enter toggles tap
   if (e.key !== " " && e.key !== "Enter") return;
   e.preventDefault();
   if (!token) return showSetup();
-  if (mode === "listen" && rec) finishRecording(); else startListening({ hold: false });
+  if (mode === "listen" && rec) finishRecording(true); else startListening({ hold: false });
 });
 
 $("face").addEventListener("click", () => {
   if (mode === "think" || mode === "speak") stopTurn(true);
   else if (mode === "notice") setMode("idle");
   else if (mode === "idle") { poke(); modeSince = performance.now(); }
-  else if (mode === "listen" && rec) finishRecording();
+  else if (mode === "listen") { listenSeq++; cancelRecording(); setMode("idle"); }   // tap the face: never mind
 });
 
 // ---- Typing ----------------------------------------------------------------------------
@@ -557,7 +644,7 @@ async function hello() {
     const r = await fetch(BRAIN + "/hello", { headers: { "X-Orbit-Token": token } });
     if (r.status === 401) return unpaired();
     const j = await r.json();
-    $("sDevice").textContent = `Connected as ${j.device || "Orbi"}`;
+    $("sDevice").textContent = `Connected as ${j.device || "Orbi"} \u00b7 version ${APP_VERSION}`;
   } catch (_) {}
 }
 
@@ -581,7 +668,7 @@ $("sSpeak").addEventListener("click", () => { prefs.speak = !prefs.speak; store.
 $("sTranslate").addEventListener("click", () => {
   setTranslating(!translating);
   $("settings").hidden = true;
-  showNotice(translating ? "Translator on. Talk in Spanish or English. Say “stop translating” to end." : "Translator off.", true);
+  showNotice(translating ? "Translator on. Speak Spanish and I’ll say it in English. Speak English and I’ll say it in Spanish." : "Translator off.", true);
 });
 $("sVolume").addEventListener("input", (e) => {
   prefs.volume = e.target.value / 100; store.set("volume", prefs.volume);
