@@ -86,7 +86,22 @@ input[type=range]{width:140px;accent-color:var(--accent)}
 .danger{color:var(--err);border-color:#4a2626}
 .toast{position:fixed;left:16px;right:16px;bottom:calc(130px + env(safe-area-inset-bottom,0px));max-width:488px;margin:0 auto;background:#1b1f27;border:1px solid var(--line);
   border-radius:12px;padding:12px 14px;font-size:15px;z-index:6;text-align:center}
-@media (prefers-reduced-motion:reduce){.talk{transition:none}}
+/* Show Orbi something: a live camera (or a chosen photo) where the face was */
+.look{width:min(86vw,44vh,380px);flex:none;display:flex;flex-direction:column;gap:10px}
+.view{position:relative;width:100%;aspect-ratio:1;border-radius:26px;overflow:hidden;background:#07080b;border:2px solid var(--line);transition:border-color .2s ease,box-shadow .2s ease}
+.view.listen{border-color:var(--accent);box-shadow:0 0 0 6px rgba(255,154,77,.18)}
+.view.busy{border-color:var(--accent)}
+.view video,.view img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.view img{background:#07080b}
+.view .msg{position:absolute;inset:0;display:grid;place-items:center;padding:24px;text-align:center;color:var(--dim);font-size:16px}
+.view .x{position:absolute;top:10px;right:10px;width:40px;height:40px;border-radius:50%;border:0;background:rgba(0,0,0,.55);display:grid;place-items:center;cursor:pointer}
+.view .x svg{width:20px;height:20px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round}
+.view .tag{position:absolute;left:10px;top:10px;font-size:13px;font-weight:700;background:rgba(0,0,0,.55);border-radius:99px;padding:5px 10px}
+.lookbar{display:flex;gap:8px}
+.lookbar button{flex:1;min-height:46px;border-radius:12px;border:1px solid var(--line);background:var(--panel);font-size:15px;font-weight:700;cursor:pointer;padding:0 8px}
+.lookbar .main{flex:1.5;white-space:nowrap;background:var(--accent);color:var(--accent-ink);border:0}
+.lookbar button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){.talk,.view{transition:none}}
 </style>
 </head>
 <body>
@@ -95,12 +110,31 @@ input[type=range]{width:140px;accent-color:var(--accent)}
     <div class="mark"><i></i>Orbi</div>
     <span class="pill" id="pill" hidden>ES / EN</span>
     <div class="spacer"></div>
+    <button class="icon" id="camBtn" aria-label="Show Orbi something"><svg viewBox="0 0 24 24"><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1.6-2h5.8l1.6 2h2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
     <button class="icon" id="typeBtn" aria-label="Type a question"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/></svg></button>
     <button class="icon" id="gearBtn" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
   </header>
 
   <main class="stage">
     <canvas class="face" id="face" aria-label="Orbi's face. Tap to stop it talking."></canvas>
+    <div class="look" id="look" hidden>
+      <div class="view" id="view">
+        <video id="cam" playsinline muted autoplay></video>
+        <img id="still" alt="The photo Orbi is looking at" hidden>
+        <div class="msg" id="camMsg" hidden></div>
+        <span class="tag" id="camTag" hidden></span>
+        <button class="x" id="camClose" aria-label="Close the camera"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <div class="lookbar">
+        <button class="main" id="camAsk">What’s this?</button>
+        <button id="camShoot" hidden>Take photo</button>
+        <button id="camPick">Photos</button>
+        <button id="camLive" hidden>Live</button>
+        <button id="camFlip" aria-label="Switch camera">Flip</button>
+      </div>
+    </div>
+    <input type="file" id="pick" accept="image/*" hidden>
+    <input type="file" id="shoot" accept="image/*" capture="environment" hidden>
     <div class="words" aria-live="polite">
       <div class="heard" id="heard"></div>
       <div class="caption" id="caption"></div>
@@ -143,7 +177,7 @@ input[type=range]{width:140px;accent-color:var(--accent)}
     <div class="row"><span>Volume</span><input type="range" id="sVolume" min="0" max="100" aria-label="Volume"></div>
     <div class="row"><span>Brain</span><div class="seg" id="sModel"></div></div>
     <div class="row"><span>New conversation<small>Forget the last few questions</small></span><button class="ghost" id="sNew">Start fresh</button></div>
-    <div class="row"><span>This phone<small id="sDevice">Version 3</small></span><button class="ghost danger" id="sForget">Disconnect</button></div>
+    <div class="row"><span>This phone<small id="sDevice">Version 4</small></span><button class="ghost danger" id="sForget">Disconnect</button></div>
     <button class="primary" id="sDone">Done</button>
   </div>
 </div>
@@ -158,7 +192,7 @@ input[type=range]{width:140px;accent-color:var(--accent)}
 // NDJSON events, then plays the 16 kHz speech that follows as it streams.
 // ---------------------------------------------------------------------------
 const BRAIN = "https://axpkzvhthtslymnokdiz.supabase.co/functions/v1/orbit-brain";
-const APP_VERSION = 3;   // shown in Settings, so it's easy to tell which copy a phone is running
+const APP_VERSION = 4;   // shown in Settings, so it's easy to tell which copy a phone is running
 const MODELS = [
   { id: "claude-sonnet-5-5", name: "Balanced" },
   { id: "claude-haiku-4-5-20251001", name: "Fastest" },
@@ -197,12 +231,14 @@ function render() {
   $("status").textContent = mode === "listen" ? (ui.status || (rec && rec.tap ? "Listening. I'll stop when you pause." : "Listening"))
     : mode === "think" ? (ui.status || "Thinking") : mode === "speak" ? ui.dir : "";
   $("pill").hidden = !translating;
+  renderLook();
   const t = $("talk");
   t.classList.toggle("live", mode === "listen");
   t.classList.toggle("busy", mode === "think" || mode === "speak");
   t.setAttribute("aria-label", mode === "think" || mode === "speak" ? "Interrupt and ask something else" : "Hold to talk");
   $("hint").textContent = mode === "listen" ? (rec && rec.tap && !pressing ? "I\u2019ll send when you pause \u00b7 tap the face to cancel" : "Let go to send")
     : (mode === "think" || mode === "speak") ? "Tap the face to stop · hold the button to interrupt"
+    : look.open ? (translating ? "Point at the writing and tap What’s this? to translate it" : "Point at it and ask, or tap What’s this?")
     : translating ? "Spanish ⇄ English · say “stop translating” to end" : "Hold to talk, or tap once and just talk";
 }
 let toastTimer = 0;
@@ -263,7 +299,8 @@ function closeMic() {
   mic = null;
 }
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden) { if (rec) cancelRecording(); stopTurn(true); closeMic(); }
+  if (document.hidden) { if (rec) cancelRecording(); stopTurn(true); closeMic(); stopCam(); }
+  else if (look.open && !look.still && !look.noLive) startCam();
 });
 
 // Voice detection for hands-free listening: the same design as the device's.
@@ -361,8 +398,9 @@ async function finishRecording(byUser) {
     return;
   }
   ui.status = ""; setMode("think");
+  const image = look.open ? await grabPhoto() : null;   // what the camera sees as you finish asking
   const pcm = await to16kPcm(r.chunks, ac.sampleRate);
-  runTurn(pcm, false, r.followUp);
+  runTurn(pcm, false, r.followUp, image);
 }
 
 // Listening but the microphone has stopped delivering sound (iOS does this after
@@ -456,7 +494,7 @@ function stopTurn(toIdle) {
   if (toIdle) setMode("idle");
 }
 
-async function runTurn(body, isText, followUp) {
+async function runTurn(body, isText, followUp, image = null) {
   const t = { abort: new AbortController(), player: null, done: false, gotAudio: false, replyQuestion: false, followUp, cancelled: false, speakStart: 0 };
   turn = t;
   ui.heard = isText ? body : ""; ui.caption = ""; ui.notice = ""; ui.status = ""; ui.dir = "";
@@ -466,18 +504,29 @@ async function runTurn(body, isText, followUp) {
     "X-Orbit-Token": token,
     "X-Orbit-Model": MODELS[prefs.model].id,
     "X-Orbit-Speaker": prefs.speak ? "on" : "off",
-    "Content-Type": isText ? "application/json" : "application/octet-stream",
   };
+  let payload;
+  if (image) {
+    // A question with a photo: multipart (the browser sets the Content-Type and boundary).
+    payload = new FormData();
+    if (isText && body) payload.append("text", body);
+    else if (body) payload.append("audio", new Blob([body], { type: "application/octet-stream" }), "speech.pcm");
+    payload.append("image", image, "photo.jpg");
+  } else {
+    headers["Content-Type"] = isText ? "application/json" : "application/octet-stream";
+    payload = isText ? JSON.stringify({ text: body }) : body;
+  }
   if (translating) headers["X-Orbit-Mode"] = "translate";
   let res;
   try {
-    res = await fetch(BRAIN + "/turn", { method: "POST", headers, body: isText ? JSON.stringify({ text: body }) : body, signal: t.abort.signal });
+    res = await fetch(BRAIN + "/turn", { method: "POST", headers, body: payload, signal: t.abort.signal });
   } catch (e) {
     if (t.cancelled) return;
     turn = null; return showNotice(navigator.onLine === false ? "You're offline. Check your connection." : "I couldn't reach my brain. Try again in a moment.");
   }
   if (t.cancelled) return;
   if (res.status === 401) { turn = null; return unpaired(); }
+  if (res.status === 413 || res.status === 415) { turn = null; return showNotice("I couldn't open that photo. Try a different one, or use the live camera."); }
   if (!res.ok || !res.body) { turn = null; return showNotice("My brain had a problem. Try again in a moment."); }
 
   const reader = res.body.getReader();
@@ -611,7 +660,8 @@ $("typebar").addEventListener("submit", (e) => {
   if (!q) return;
   audioNow(); stopTurn(false); if (rec) cancelRecording();
   $("typed").value = ""; $("typed").blur();
-  runTurn(q, true, false);
+  if (look.open) grabPhoto().then((img) => runTurn(q, true, false, img));
+  else runTurn(q, true, false);
 });
 
 // ---- Pairing -----------------------------------------------------------------------------
@@ -687,6 +737,141 @@ $("sForget").addEventListener("click", () => {
   if (performance.now() - forgetArmed > 4000) { forgetArmed = performance.now(); b.textContent = "Tap again to disconnect"; setTimeout(() => (b.textContent = "Disconnect"), 4000); return; }
   token = ""; store.del("token"); b.textContent = "Disconnect";
   $("settings").hidden = true; stopTurn(true); showSetup("Disconnected. Enter a setup code to connect again.");
+});
+
+// ---- Show Orbi something --------------------------------------------------------------------
+// Three ways to let Orbi see: point the live camera and ask (each question takes a
+// fresh picture as you finish), tap "What's this?" to snap and ask in one go, or pick
+// a photo you already took. When the browser won't give a live camera, the phone's
+// own camera app opens instead ("Take photo").
+const look = { open: false, stream: null, still: null, stillUrl: "", sentUrl: "", facing: "environment", noLive: false, starting: 0 };
+const PHOTO_MAX = 1280;   // long side, px: plenty to read a label, and quick on LTE
+function setStill(blob) {
+  if (look.stillUrl) URL.revokeObjectURL(look.stillUrl);
+  look.still = blob; look.stillUrl = blob ? URL.createObjectURL(blob) : "";
+}
+function setSent(blob) {
+  if (look.sentUrl) URL.revokeObjectURL(look.sentUrl);
+  look.sentUrl = blob ? URL.createObjectURL(blob) : "";
+}
+function renderLook() {
+  $("look").hidden = !look.open; $("face").hidden = look.open;
+  if (!look.open) return;
+  $("view").classList.toggle("listen", mode === "listen");
+  $("view").classList.toggle("busy", mode === "think" || mode === "speak");
+  // While Orbi thinks about a live picture, hold that picture on screen so you see what it saw.
+  const showSent = !look.still && look.sentUrl && (mode === "think" || mode === "speak");
+  const src = look.still ? look.stillUrl : showSent ? look.sentUrl : "";
+  const img = $("still");
+  if (src) { if (img.getAttribute("src") !== src) img.src = src; img.hidden = false; } else { img.hidden = true; img.removeAttribute("src"); }
+  const live = !!look.stream;
+  $("camMsg").hidden = live || !!src;
+  $("camMsg").textContent = look.noLive ? "Tap Take photo, or pick one from Photos." : "Opening the camera…";
+  $("camTag").hidden = !src;
+  $("camTag").textContent = look.still ? "Your photo" : "What Orbi saw";
+  $("camAsk").hidden = look.noLive && !look.still;
+  $("camShoot").hidden = !look.noLive;
+  $("camLive").hidden = !look.still || look.noLive;
+  $("camFlip").hidden = !live || !!look.still;
+}
+async function startCam() {
+  const seq = ++look.starting;
+  stopCam();
+  render();
+  try {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error("nocam");
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: look.facing }, width: { ideal: 1920 }, height: { ideal: 1440 } }, audio: false,
+    });
+    if (seq !== look.starting || !look.open) { stream.getTracks().forEach((t) => t.stop()); return; }
+    look.stream = stream; look.noLive = false;
+    const v = $("cam"); v.srcObject = stream; v.play().catch(() => {});
+    v.style.transform = look.facing === "user" ? "scaleX(-1)" : "";   // a selfie view reads like a mirror
+  } catch (e) {
+    if (seq !== look.starting) return;
+    look.noLive = true;
+    if (e && e.name === "NotAllowedError") toast("Camera blocked for this site. You can still take or pick a photo.", 5000);
+  }
+  render();
+}
+function stopCam() {
+  if (look.stream) look.stream.getTracks().forEach((t) => t.stop());
+  look.stream = null;
+  const v = $("cam"); if (v) v.srcObject = null;
+}
+function openLook() {
+  look.open = true; setStill(null); setSent(null);
+  $("typebar").hidden = true;
+  if (mode === "notice") setMode("idle");
+  startCam();
+}
+function closeLook() {
+  look.open = false; look.starting++; stopCam(); setStill(null); setSent(null); look.noLive = false;
+  render();
+  sizeCanvas();   // the face may have been hidden through a rotation
+}
+// A picture as a JPEG no bigger than PHOTO_MAX on its long side.
+function toJpeg(src, w, h) {
+  const k = Math.min(1, PHOTO_MAX / Math.max(w, h));
+  const c = document.createElement("canvas");
+  c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
+  c.getContext("2d").drawImage(src, 0, 0, c.width, c.height);
+  return new Promise((r) => c.toBlob((b) => r(b), "image/jpeg", 0.82));
+}
+// The picture for this question: the chosen photo, or a fresh frame from the live camera.
+async function grabPhoto() {
+  if (!look.open) return null;
+  if (look.still) return look.still;
+  const v = $("cam");
+  if (!look.stream || !v.videoWidth) return null;
+  const blob = await toJpeg(v, v.videoWidth, v.videoHeight);
+  setSent(blob); render();
+  return blob;
+}
+async function usePhotoFile(file) {
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    await new Promise((ok, bad) => { img.onload = ok; img.onerror = bad; img.src = url; });
+    const blob = await toJpeg(img, img.naturalWidth, img.naturalHeight);   // also turns HEIC into JPEG
+    if (!blob) throw new Error("encode");
+    if (!look.open) { look.open = true; $("typebar").hidden = true; }
+    look.starting++; stopCam();
+    setStill(blob); setSent(null);
+    if (mode === "notice") setMode("idle");
+    render();
+    toast(translating ? "Got it. Tap What’s this? to translate the writing." : "Got it. Ask about it, or tap What’s this?");
+  } catch (_) {
+    toast("I couldn't open that photo. Try another one.");
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+$("camBtn").addEventListener("click", () => {
+  if (!token) return showSetup();
+  if (look.open) return closeLook();
+  // No camera API at all (an old browser): go straight to the phone's camera app.
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { look.open = true; look.noLive = true; render(); $("shoot").click(); return; }
+  openLook();
+});
+$("camClose").addEventListener("click", closeLook);
+$("camPick").addEventListener("click", () => $("pick").click());
+$("camShoot").addEventListener("click", () => $("shoot").click());
+for (const id of ["pick", "shoot"]) $(id).addEventListener("change", (e) => { usePhotoFile(e.target.files && e.target.files[0]); e.target.value = ""; });
+$("camLive").addEventListener("click", () => { setStill(null); startCam(); });
+$("camFlip").addEventListener("click", () => { look.facing = look.facing === "environment" ? "user" : "environment"; startCam(); });
+$("camAsk").addEventListener("click", async () => {
+  if (!token) return showSetup();
+  audioNow(); stopTurn(false); if (rec) { listenSeq++; cancelRecording(); }
+  const image = await grabPhoto();
+  if (!image) return toast("The camera isn't ready yet. Give it a second.");
+  runTurn(null, false, false, image);
+});
+$("view").addEventListener("click", (e) => {   // like the face: tap to stop it talking, or to cancel listening
+  if (e.target.closest("button")) return;
+  if (mode === "think" || mode === "speak") stopTurn(true);
+  else if (mode === "listen") { listenSeq++; cancelRecording(); setMode("idle"); }
 });
 
 // ---- The face ----------------------------------------------------------------------------

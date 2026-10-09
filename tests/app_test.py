@@ -20,7 +20,16 @@ def brain(route):
     if req.method == 'OPTIONS': return route.fulfill(status=200, headers=CORS, body='ok')
     if path == '/hello': return route.fulfill(status=200, headers=CORS, json={'ok': True, 'device': 'Orbi (phone)'})
     if path == '/turn':
-        turns.append({'bytes': len(req.post_data_buffer or b''), 'mode': req.headers.get('x-orbit-mode', '')})
+        body = req.post_data_buffer or b''
+        ctype = req.headers.get('content-type', '')
+        t = {'bytes': len(body), 'mode': req.headers.get('x-orbit-mode', ''), 'multipart': ctype.startswith('multipart/form-data')}
+        if t['multipart']:
+            # Which parts came, and whether the image really is a JPEG.
+            t['parts'] = sorted(set(x.decode() for x in __import__('re').findall(rb'name="(\w+)"', body)))
+            i = body.find(b'\xff\xd8\xff')
+            t['jpeg'] = i >= 0
+            t['jpeg_bytes'] = len(body) - i if i >= 0 else 0
+        turns.append(t)
         text = replies.pop(0) if replies else 'Okay.'
         lines = [{'t': 'heard', 'text': 'something'}, {'t': 'reply', 'text': text}, {'t': 'audio'}]
         return route.fulfill(status=200, headers={**CORS, 'Content-Type': 'application/x-ndjson'},
@@ -133,6 +142,59 @@ with sync_playwright() as p:
     check('a dead microphone is reopened', pg.evaluate('__opens') > opens and mode() == 'listen', (pg.evaluate('__opens'), opens, mode()))
     pg.wait_for_timeout(5500)
     check('and it stops trying after a few goes', mode() in ('notice', 'idle'), mode())
+
+    # 9. Seeing: the camera button, live look, What's this?, a picked photo, typing with a photo.
+    pg.evaluate("stopTurn(true)"); idle()
+    pg.locator('#camBtn').click()
+    pg.wait_for_function("look.stream && document.getElementById('cam').videoWidth > 0", timeout=5000)
+    check('the camera button opens a live camera in place of the face',
+          pg.evaluate("!document.getElementById('look').hidden && document.getElementById('face').hidden"))
+    n = len(turns)
+    down(); pg.wait_for_timeout(60); pg.evaluate("say(0.12, 1200)"); pg.wait_for_timeout(450); up()
+    pg.wait_for_function("mode === 'think' || mode === 'speak'", timeout=5000)
+    check('a spoken question while the camera is open shows what Orbi saw',
+          pg.evaluate("!document.getElementById('still').hidden && !!look.sentUrl"))
+    pg.wait_for_function("mode === 'speak'", timeout=5000)
+    t = turns[-1]
+    check('and is sent with the speech and a JPEG', len(turns) == n + 1 and t['multipart'] and t['parts'] == ['audio', 'image'] and t['jpeg'], t)
+    idle()
+    pg.locator('#camAsk').click(); pg.wait_for_function("mode === 'speak'", timeout=5000)
+    t = turns[-1]
+    check("What's this? sends just the picture", t.get('parts') == ['image'] and t['jpeg'], t); idle()
+    # A big photo from the library is shrunk to 1280 px before it goes anywhere.
+    big = pg.evaluate('''async () => { const c = document.createElement('canvas'); c.width = 4032; c.height = 3024;
+      const x = c.getContext('2d'); for (let i = 0; i < 400; i++) { x.fillStyle = `hsl(${i * 7},70%,50%)`; x.fillRect((i * 97) % 4000, (i * 61) % 3000, 300, 200); }
+      const b = await new Promise((r) => c.toBlob(r, 'image/jpeg', 0.95));
+      return Array.from(new Uint8Array(await b.arrayBuffer())); }''')
+    pg.set_input_files('#pick', files=[{'name': 'IMG_0001.jpg', 'mimeType': 'image/jpeg', 'buffer': bytes(big)}])
+    pg.wait_for_function("!!look.still", timeout=5000)
+    dims = pg.evaluate('''async () => { const b = await createImageBitmap(look.still); return [b.width, b.height, look.still.size]; }''')
+    check('a picked photo is shown and shrunk to 1280 px', dims[0] == 1280 and dims[1] == 960 and pg.evaluate("!document.getElementById('still').hidden"), dims)
+    check('the live camera is released while a photo is picked', pg.evaluate("!look.stream && !document.getElementById('camLive').hidden"))
+    pg.evaluate("document.getElementById('typeBtn').click()")
+    pg.fill('#typed', 'what brand is this'); pg.press('#typed', 'Enter')
+    pg.wait_for_function("mode === 'speak'", timeout=5000)
+    t = turns[-1]
+    check('a typed question carries the picked photo', t.get('parts') == ['image', 'text'] and t['jpeg'] and t['jpeg_bytes'] < 600000, t); idle()
+    # Translator: What's this? goes out marked for translating.
+    pg.evaluate("setTranslating(true)")
+    pg.locator('#camAsk').click(); pg.wait_for_function("mode === 'speak'", timeout=5000)
+    check('in translator mode the photo goes to the translator', turns[-1]['mode'] == 'translate' and turns[-1].get('parts') == ['image'], turns[-1])
+    idle(); pg.evaluate("setTranslating(false)")
+    # Closing gives the face back and stops the camera.
+    pg.locator('#camClose').click()
+    check('closing the camera brings the face back and turns the camera off',
+          pg.evaluate("document.getElementById('look').hidden && !document.getElementById('face').hidden && !look.stream && !look.still"))
+    n = len(turns)
+    down(); pg.wait_for_timeout(60); pg.evaluate("say(0.12, 1200)"); pg.wait_for_timeout(450); up()
+    pg.wait_for_function("mode === 'speak'", timeout=5000)
+    check('with the camera closed, questions go without a photo', len(turns) == n + 1 and not turns[-1]['multipart'], turns[-1]); idle()
+    # A camera that can't be opened falls back to taking or picking a photo.
+    pg.evaluate("navigator.mediaDevices.getUserMedia = () => Promise.reject(Object.assign(new Error('no'), { name: 'NotAllowedError' })); 0")
+    pg.locator('#camBtn').click(); pg.wait_for_timeout(300)
+    check('a blocked camera offers Take photo and Photos instead',
+          pg.evaluate("look.noLive && !document.getElementById('camShoot').hidden && !document.getElementById('camPick').hidden && document.getElementById('camAsk').hidden"))
+    pg.locator('#camClose').click()
 
     check('no page errors', not errs, errs)
     b.close()
