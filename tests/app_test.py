@@ -1,4 +1,4 @@
-"""Orbi phone app: listening tests in headless Chromium, with a stand-in brain
+"""Orby phone app: listening tests in headless Chromium, with a stand-in brain
 and a scripted microphone. Run:  python3 tests/app_test.py   (needs playwright)."""
 import json, struct, math, threading, http.server, functools, os, sys
 from playwright.sync_api import sync_playwright
@@ -18,7 +18,7 @@ def brain(route):
     req = route.request
     path = req.url.split('orbit-brain')[1]
     if req.method == 'OPTIONS': return route.fulfill(status=200, headers=CORS, body='ok')
-    if path == '/hello': return route.fulfill(status=200, headers=CORS, json={'ok': True, 'device': 'Orbi (phone)'})
+    if path == '/hello': return route.fulfill(status=200, headers=CORS, json={'ok': True, 'device': 'Orby (phone)'})
     if path == '/turn':
         body = req.post_data_buffer or b''
         ctype = req.headers.get('content-type', '')
@@ -89,7 +89,7 @@ with sync_playwright() as p:
         pg.wait_for_function("mode === 'speak'", timeout=5000)
         check(f'question {n} in a row is sent', len(turns) == n, turns); idle()
 
-    # 4. Orbi asks something and listens on its own; pressing the button to answer must not cut you off.
+    # 4. Orby asks something and listens on its own; pressing the button to answer must not cut you off.
     replies.append('Which day do you want?')
     down(); pg.wait_for_timeout(60); pg.evaluate("say(0.1, 1000)"); pg.wait_for_timeout(450); up()
     pg.wait_for_function("mode === 'listen' && rec && rec.followUp", timeout=9000)
@@ -151,9 +151,12 @@ with sync_playwright() as p:
           pg.evaluate("!document.getElementById('look').hidden && document.getElementById('face').hidden"))
     n = len(turns)
     down(); pg.wait_for_timeout(60); pg.evaluate("say(0.12, 1200)"); pg.wait_for_timeout(450); up()
-    pg.wait_for_function("mode === 'think' || mode === 'speak'", timeout=5000)
-    check('a spoken question while the camera is open shows what Orbi saw',
-          pg.evaluate("!document.getElementById('still').hidden && !!look.sentUrl"))
+    # The frame is encoded just after listening ends, so give it a moment to appear.
+    try:
+        pg.wait_for_function("!document.getElementById('still').hidden && !!look.sentUrl", timeout=3000); shown = True
+    except Exception:
+        shown = False
+    check('a spoken question while the camera is open shows what Orby saw', shown)
     pg.wait_for_function("mode === 'speak'", timeout=5000)
     t = turns[-1]
     check('and is sent with the speech and a JPEG', len(turns) == n + 1 and t['multipart'] and t['parts'] == ['audio', 'image'] and t['jpeg'], t)
