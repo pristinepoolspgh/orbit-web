@@ -27,14 +27,14 @@ small{color:var(--dim)}
 <body>
 <main>
   <div class="mark"><i></i>Install Orby</div>
-  <p>Puts Orby on the Waveshare ESP32-S3 round AMOLED 1.75C. Takes about two minutes.</p>
+  <p>Puts Orby on the <b style="color:var(--text)">Waveshare ESP32-S3-Touch-AMOLED-2.06</b> watch. Takes about two minutes.</p>
 
   <div class="card">
     <ol>
       <li>Use a <b>computer</b> (Windows or Mac) in <b>Chrome or Edge</b>. Phones and Safari can't do this step.</li>
-      <li>Plug the round board into the computer with a <b>USB-C cable that carries data</b> (a charge-only cable won't show up).</li>
+      <li>Plug the watch into the computer with a <b>USB-C cable that carries data</b> (a charge-only cable won't show up).</li>
       <li>Tap <b>Install Orby</b> below, pick the port that appears (it's usually called <i>USB JTAG/serial debug unit</i>), and choose <b>Install</b>. Keep it plugged in until it says it's done.</li>
-      <li>Orby restarts and shows a QR code. From there, follow the setup on its screen with your phone.</li>
+      <li>When it says it's done, unplug the watch and plug it back in (or press its PWR button). Orby wakes up and shows a QR code. From there, follow the setup on its screen with your phone.</li>
     </ol>
     <esp-web-install-button manifest="manifest.json">
       <button slot="activate">Install Orby</button>
@@ -43,8 +43,8 @@ small{color:var(--dim)}
     </esp-web-install-button>
   </div>
 
-  <p><b style="color:var(--text)">No port shows up?</b> Unplug the board, hold its <b style="color:var(--text)">BOOT</b> button while you plug it back in, let go, then tap Install again. On Windows, if it still doesn't appear, try a different cable or USB port.</p>
-  <p><small>Installing erases the board first, so a board that was set up before will need its Wi-Fi and setup code again.</small></p>
+  <p><b style="color:var(--text)">No port shows up?</b> Unplug the watch, hold its <b style="color:var(--text)">BOOT</b> button while you plug it back in, let go, then tap Install again. On Windows, if it still doesn't appear, try a different cable or USB port.</p>
+  <p><small>Installing erases the watch first, so a watch that was set up before will need its Wi-Fi and setup code again.</small></p>
 </main>
 </body>
 </html>
