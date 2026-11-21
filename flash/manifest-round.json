@@ -1,6 +1,6 @@
 {
   "name": "Orby",
-  "version": "1.3.2-round",
+  "version": "1.3.3-round",
   "new_install_prompt_erase": true,
   "builds": [
     {
