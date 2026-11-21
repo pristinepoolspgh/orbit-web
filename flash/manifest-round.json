@@ -1,15 +1,27 @@
 {
   "name": "Orby",
-  "version": "1.2-round",
+  "version": "1.3-round",
   "new_install_prompt_erase": true,
   "builds": [
     {
       "chipFamily": "ESP32-S3",
       "parts": [
-        { "path": "round/bootloader.bin", "offset": 0 },
-        { "path": "round/partitions.bin", "offset": 32768 },
-        { "path": "boot_app0.bin", "offset": 57344 },
-        { "path": "round/orby.bin", "offset": 65536 }
+        {
+          "path": "round/bootloader.bin",
+          "offset": 0
+        },
+        {
+          "path": "round/partitions.bin",
+          "offset": 32768
+        },
+        {
+          "path": "boot_app0.bin",
+          "offset": 57344
+        },
+        {
+          "path": "round/orby.bin",
+          "offset": 65536
+        }
       ]
     }
   ]
